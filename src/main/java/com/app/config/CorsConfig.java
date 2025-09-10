@@ -18,7 +18,7 @@ public class CorsConfig implements WebMvcConfigurer {
                 .allowedOrigins(
                         "http://localhost:3000",
                         "http://127.0.0.1:3000",
-                        "https://coursefinder-frontend-three.vercel.app"
+                        "https://coursefinder-sti.vercel.app"
                 )
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
@@ -30,7 +30,7 @@ public class CorsConfig implements WebMvcConfigurer {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.addAllowedOrigin("http://localhost:3000");
         configuration.addAllowedOrigin("http://127.0.0.1:3000");
-        configuration.addAllowedOrigin("https://coursefinder-frontend-three.vercel.app");
+        configuration.addAllowedOrigin("https://coursefinder-sti.vercel.app");
         configuration.addAllowedMethod("*");
         configuration.addAllowedHeader("*");
         configuration.setAllowCredentials(true);
