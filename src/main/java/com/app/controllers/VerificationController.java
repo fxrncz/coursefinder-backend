@@ -74,9 +74,19 @@ public class VerificationController {
                 }
                 PasswordReset pr = new PasswordReset(userId, email, codeHash, expiresAt);
                 passwordResetRepository.save(pr);
-                String resetUrl = request.getOrDefault("resetBaseUrl", "http://localhost:3000/reset-password").toString()
-                        + "?token=" + code + "&email=" + java.net.URLEncoder.encode(email, java.nio.charset.StandardCharsets.UTF_8);
-                // emailService.sendPasswordResetLink(email, resetUrl); // Temporarily disabled per request
+                
+                // Generate reset link
+                String resetBaseUrl = request.getOrDefault("resetBaseUrl", "http://localhost:3000/reset-password").toString();
+                String resetLink = resetBaseUrl + "?email=" + email + "&token=" + code;
+                
+                // Send reset link email
+                try {
+                    emailService.sendPasswordResetLink(email, resetLink);
+                    System.out.println("Password reset link sent to: " + email);
+                } catch (Exception emailError) {
+                    System.out.println("Failed to send reset link: " + emailError.getMessage());
+                    // Don't fail the request if email fails
+                }
             } else {
                 // Registration flow
                 EmailVerification ev = new EmailVerification(userId, email, codeHash, expiresAt);
@@ -86,7 +96,7 @@ public class VerificationController {
                     p.setExpiresAt(expiresAt);
                     pendingRegistrationRepository.save(p);
                 });
-                // emailService.sendVerificationCode(email, code); // Temporarily disabled per request
+                emailService.sendVerificationCode(email, code);
             }
 
             res.put("success", true);
@@ -133,9 +143,8 @@ public class VerificationController {
                     res.put("message", "Invalid code");
                     return ResponseEntity.badRequest().body(res);
                 }
-                pr.setConsumed(true);
-                passwordResetRepository.save(pr);
-                // Indicate that reset can proceed (frontend should now prompt for new password)
+                // Don't consume the token yet - let the password reset endpoint handle it
+                // Just verify the token is valid and not expired
                 res.put("success", true);
                 res.put("message", "Code verified. You may reset your password.");
                 return ResponseEntity.ok(res);
@@ -167,29 +176,45 @@ public class VerificationController {
                 return ResponseEntity.badRequest().body(res);
             }
 
+            // Mark verification as consumed first
             ev.setConsumed(true);
             emailVerificationRepository.save(ev);
 
-            // If pending registration exists, create real user now and consume pending
+            // Find and process pending registration
             Optional<PendingRegistration> pendingOpt = pendingRegistrationRepository.findByEmail(email);
             if (pendingOpt.isPresent()) {
                 PendingRegistration p = pendingOpt.get();
                 if (!p.isConsumed() && p.getCodeHash() != null && p.getCodeHash().equals(ev.getCodeHash())) {
+                    // Create user account
                     User newUser = new User(p.getUsername(), p.getEmail(), p.getPasswordHash());
                     User savedUser = userRepository.save(newUser);
+                    
+                    // Mark pending as consumed
                     p.setConsumed(true);
                     pendingRegistrationRepository.save(p);
-                    res.put("user", Map.of(
+                    
+                    // Prepare response data
+                    Map<String, Object> userData = Map.of(
                             "id", savedUser.getId(),
                             "username", savedUser.getUsername(),
                             "email", savedUser.getEmail(),
                             "createdAt", savedUser.getCreatedAt()
-                    ));
+                    );
+                    res.put("user", userData);
+                    
+                    // Send success email asynchronously (don't wait for it)
+                    try {
+                        emailService.sendVerificationSuccessEmail(email, savedUser.getUsername());
+                        System.out.println("Success email sent to: " + email);
+                    } catch (Exception emailError) {
+                        System.out.println("Failed to send success email: " + emailError.getMessage());
+                        // Don't fail verification if success email fails
+                    }
                 }
             }
 
             res.put("success", true);
-            res.put("message", "Email verified successfully");
+            res.put("message", "Email verified successfully! Welcome to CourseFinder!");
             return ResponseEntity.ok(res);
         } catch (Exception e) {
             res.put("success", false);

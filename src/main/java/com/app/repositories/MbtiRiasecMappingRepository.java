@@ -27,48 +27,18 @@ public interface MbtiRiasecMappingRepository extends JpaRepository<MbtiRiasecMap
     List<MbtiRiasecMapping> findByMbtiTypeAndRiasecCode(String mbtiType, String riasecCode);
     
     /**
-     * Find course recommendations by MBTI type and RIASEC code, ordered by match score
-     */
-    List<MbtiRiasecMapping> findByMbtiTypeAndRiasecCodeOrderByMatchScoreDesc(String mbtiType, String riasecCode);
-    
-    /**
-     * Find course recommendations by MBTI type, ordered by match score
-     */
-    List<MbtiRiasecMapping> findByMbtiTypeOrderByMatchScoreDesc(String mbtiType);
-    
-    /**
-     * Find course recommendations by RIASEC code, ordered by match score
-     */
-    List<MbtiRiasecMapping> findByRiasecCodeOrderByMatchScoreDesc(String riasecCode);
-    
-    /**
      * Find course recommendations by RIASEC codes (for top 2 RIASEC results)
      */
-    @Query("SELECT m FROM MbtiRiasecMapping m WHERE m.riasecCode IN :riasecCodes ORDER BY m.matchScore DESC")
-    List<MbtiRiasecMapping> findByRiasecCodesOrderByMatchScore(@Param("riasecCodes") List<String> riasecCodes);
+    @Query("SELECT m FROM MbtiRiasecMapping m WHERE m.riasecCode IN :riasecCodes ORDER BY m.id")
+    List<MbtiRiasecMapping> findByRiasecCodesOrderById(@Param("riasecCodes") List<String> riasecCodes);
     
     /**
      * Find best matches by MBTI type and any of the RIASEC codes
      */
-    @Query("SELECT m FROM MbtiRiasecMapping m WHERE m.mbtiType = :mbtiType AND m.riasecCode IN :riasecCodes ORDER BY m.matchScore DESC")
-    List<MbtiRiasecMapping> findByMbtiTypeAndRiasecCodesOrderByMatchScore(
+    @Query("SELECT m FROM MbtiRiasecMapping m WHERE m.mbtiType = :mbtiType AND m.riasecCode IN :riasecCodes ORDER BY m.id")
+    List<MbtiRiasecMapping> findByMbtiTypeAndRiasecCodesOrderById(
             @Param("mbtiType") String mbtiType, 
             @Param("riasecCodes") List<String> riasecCodes);
-    
-    /**
-     * Find recommendations by category
-     */
-    List<MbtiRiasecMapping> findByCategory(String category);
-    
-    /**
-     * Find recommendations by university
-     */
-    List<MbtiRiasecMapping> findByUniversity(String university);
-    
-    /**
-     * Find recommendations by program type
-     */
-    List<MbtiRiasecMapping> findByProgramType(String programType);
     
     /**
      * Get all unique MBTI types in the database
@@ -83,31 +53,19 @@ public interface MbtiRiasecMappingRepository extends JpaRepository<MbtiRiasecMap
     List<String> findAllUniqueRiasecCodes();
     
     /**
-     * Get all unique categories
+     * Find top N recommendations for a specific MBTI and RIASEC combination
      */
-    @Query("SELECT DISTINCT m.category FROM MbtiRiasecMapping m WHERE m.category IS NOT NULL ORDER BY m.category")
-    List<String> findAllUniqueCategories();
-    
-    /**
-     * Get all unique universities
-     */
-    @Query("SELECT DISTINCT m.university FROM MbtiRiasecMapping m WHERE m.university IS NOT NULL ORDER BY m.university")
-    List<String> findAllUniqueUniversities();
-    
-    /**
-     * Find top N recommendations by match score for a specific MBTI and RIASEC combination
-     */
-    @Query("SELECT m FROM MbtiRiasecMapping m WHERE m.mbtiType = :mbtiType AND m.riasecCode IN :riasecCodes ORDER BY m.matchScore DESC LIMIT :limit")
+    @Query("SELECT m FROM MbtiRiasecMapping m WHERE m.mbtiType = :mbtiType AND m.riasecCode IN :riasecCodes ORDER BY m.id LIMIT :limit")
     List<MbtiRiasecMapping> findTopRecommendations(
             @Param("mbtiType") String mbtiType, 
             @Param("riasecCodes") List<String> riasecCodes, 
             @Param("limit") int limit);
     
     /**
-     * Search courses by name (case-insensitive)
+     * Search courses by suggested courses content (case-insensitive)
      */
-    @Query("SELECT m FROM MbtiRiasecMapping m WHERE LOWER(m.courseName) LIKE LOWER(CONCAT('%', :courseName, '%'))")
-    List<MbtiRiasecMapping> findByCourseNameContainingIgnoreCase(@Param("courseName") String courseName);
+    @Query("SELECT m FROM MbtiRiasecMapping m WHERE LOWER(m.suggestedCourses) LIKE LOWER(CONCAT('%', :courseName, '%'))")
+    List<MbtiRiasecMapping> findBySuggestedCoursesContainingIgnoreCase(@Param("courseName") String courseName);
     
     /**
      * Get statistics about mappings
@@ -126,4 +84,10 @@ public interface MbtiRiasecMappingRepository extends JpaRepository<MbtiRiasecMap
      */
     @Query("SELECT m.riasecCode, COUNT(m) FROM MbtiRiasecMapping m GROUP BY m.riasecCode ORDER BY COUNT(m) DESC")
     List<Object[]> countByRiasecCode();
+    
+    /**
+     * Get detailed statistics about the mappings
+     */
+    @Query("SELECT COUNT(DISTINCT m.mbtiType) as mbtiCount, COUNT(DISTINCT m.riasecCode) as riasecCount, COUNT(m) as totalRecords FROM MbtiRiasecMapping m")
+    Object[] getDetailedStatistics();
 }

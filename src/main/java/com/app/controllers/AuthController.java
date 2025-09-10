@@ -1,8 +1,13 @@
 package com.app.controllers;
 
 import com.app.models.User;
+import com.app.models.PendingRegistration;
+import com.app.models.EmailVerification;
 import com.app.repositories.UserRepository;
 import com.app.repositories.TestResultRepository;
+import com.app.repositories.PendingRegistrationRepository;
+import com.app.repositories.EmailVerificationRepository;
+import com.app.services.EmailService;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.app.security.PasswordUtil;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +18,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.List;
+import java.time.LocalDateTime;
+import java.util.Random;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -23,6 +32,15 @@ public class AuthController {
 
     @Autowired
     private TestResultRepository testResultRepository;
+    
+    @Autowired
+    private PendingRegistrationRepository pendingRegistrationRepository;
+    
+    @Autowired
+    private EmailVerificationRepository emailVerificationRepository;
+    
+    @Autowired
+    private EmailService emailService;
 
     // Using PBKDF2-based hashing utility (no external security deps required)
 
@@ -59,7 +77,7 @@ public class AuthController {
         }
     }
 
-    // Start registration: store pending and send code (no user created yet)
+    // Start registration: store pending and send verification code
     @PostMapping("/register")
     @Transactional
     public ResponseEntity<Map<String, Object>> register(@RequestBody Map<String, String> request) {
@@ -91,36 +109,66 @@ public class AuthController {
                 return ResponseEntity.badRequest().body(response);
             }
             
-            // Check if username already exists
+            // Check if username already exists in users table
             if (userRepository.existsByUsername(username)) {
                 response.put("success", false);
                 response.put("message", "Username already exists");
                 return ResponseEntity.badRequest().body(response);
             }
             
-            // Check if email already exists
+            // Check if email already exists in users table
             if (userRepository.existsByEmail(email)) {
                 response.put("success", false);
                 response.put("message", "Email already exists");
                 return ResponseEntity.badRequest().body(response);
             }
             
-            // Create user immediately (no email verification)
+            // Check if email already exists in pending registrations
+            if (pendingRegistrationRepository.findByEmail(email).isPresent()) {
+                response.put("success", false);
+                response.put("message", "Email verification already in progress. Please check your email or try again later.");
+                return ResponseEntity.badRequest().body(response);
+            }
+            
+            // Generate verification code
+            String code = generateVerificationCode();
+            String codeHash = sha256(code);
+            LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(10);
+            
+            // Hash password
             String hashedPassword = PasswordUtil.hashPassword(password);
-            User newUser = new User(username, email, hashedPassword);
-            User savedUser = userRepository.save(newUser);
-
-            Map<String, Object> userResponse = new HashMap<>();
-            userResponse.put("id", savedUser.getId());
-            userResponse.put("username", savedUser.getUsername());
-            userResponse.put("email", savedUser.getEmail());
-            userResponse.put("age", savedUser.getAge());
-            userResponse.put("gender", savedUser.getGender());
-            userResponse.put("createdAt", savedUser.getCreatedAt());
+            
+            // Create pending registration
+            PendingRegistration pendingRegistration = new PendingRegistration(
+                username, email, hashedPassword, codeHash, expiresAt
+            );
+            
+            System.out.println("Saving pending registration for: " + email);
+            PendingRegistration savedPending = pendingRegistrationRepository.save(pendingRegistration);
+            System.out.println("Pending registration saved with ID: " + savedPending.getId());
+            
+            // Create email verification record
+            EmailVerification emailVerification = new EmailVerification(null, email, codeHash, expiresAt);
+            System.out.println("Saving email verification for: " + email);
+            EmailVerification savedVerification = emailVerificationRepository.save(emailVerification);
+            System.out.println("Email verification saved with ID: " + savedVerification.getId());
+            
+            // Send verification email
+            try {
+                System.out.println("Attempting to send verification email to: " + email + " with code: " + code);
+                emailService.sendVerificationCode(email, code);
+                System.out.println("Verification email sent successfully to: " + email);
+            } catch (Exception emailError) {
+                System.out.println("Failed to send verification email: " + emailError.getMessage());
+                emailError.printStackTrace();
+                // Don't fail registration if email fails, but log it
+                // In production, you might want to handle this differently
+            }
 
             response.put("success", true);
-            response.put("message", "Registration successful");
-            response.put("user", userResponse);
+            response.put("message", "Registration successful! Please check your email for verification code.");
+            response.put("email", email);
+            response.put("requiresVerification", true);
             return ResponseEntity.ok(response);
             
         } catch (Exception e) {
@@ -368,6 +416,153 @@ public class AuthController {
             response.put("success", false);
             response.put("message", "Delete failed: " + e.getMessage());
             return ResponseEntity.status(500).body(response);
+        }
+    }
+    
+    // Test endpoint for email functionality
+    @PostMapping("/test-email")
+    public ResponseEntity<Map<String, Object>> testEmail(@RequestBody Map<String, String> request) {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            String email = request.get("email");
+            if (email == null || email.trim().isEmpty()) {
+                response.put("success", false);
+                response.put("message", "Email is required");
+                return ResponseEntity.badRequest().body(response);
+            }
+            
+            String code = generateVerificationCode();
+            emailService.sendVerificationCode(email, code);
+            
+            response.put("success", true);
+            response.put("message", "Test email sent successfully");
+            response.put("email", email);
+            response.put("code", code); // Only for testing - remove in production
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "Email test failed: " + e.getMessage());
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+    
+    // Debug endpoint to check pending registrations
+    @GetMapping("/debug-pending")
+    public ResponseEntity<Map<String, Object>> debugPending() {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            List<PendingRegistration> pending = pendingRegistrationRepository.findAll();
+            System.out.println("Total pending registrations: " + pending.size());
+            
+            for (PendingRegistration p : pending) {
+                System.out.println("Pending: " + p.getUsername() + ", Email: " + p.getEmail() + ", ID: " + p.getId());
+            }
+            
+            response.put("success", true);
+            response.put("message", "Pending registrations retrieved");
+            response.put("count", pending.size());
+            response.put("pending", pending.stream().map(p -> Map.of(
+                "id", p.getId(),
+                "username", p.getUsername(),
+                "email", p.getEmail(),
+                "expiresAt", p.getExpiresAt(),
+                "consumed", p.isConsumed()
+            )).collect(java.util.stream.Collectors.toList()));
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            System.out.println("Debug pending error: " + e.getMessage());
+            e.printStackTrace();
+            response.put("success", false);
+            response.put("message", "Debug error: " + e.getMessage());
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+    
+    // Debug endpoint to test database connection
+    @GetMapping("/debug-db")
+    public ResponseEntity<Map<String, Object>> debugDatabase() {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            // Test user repository
+            long userCount = userRepository.count();
+            System.out.println("Total users in database: " + userCount);
+            
+            // Test pending registration repository
+            long pendingCount = pendingRegistrationRepository.count();
+            System.out.println("Total pending registrations: " + pendingCount);
+            
+            response.put("success", true);
+            response.put("message", "Database connection working");
+            response.put("userCount", userCount);
+            response.put("pendingCount", pendingCount);
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            System.out.println("Database debug error: " + e.getMessage());
+            e.printStackTrace();
+            response.put("success", false);
+            response.put("message", "Database error: " + e.getMessage());
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+    
+    // Debug endpoint to test email configuration
+    @GetMapping("/debug-email-config")
+    public ResponseEntity<Map<String, Object>> debugEmailConfig() {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            // Test email service configuration
+            String testEmail = "test@example.com";
+            String testCode = "123456";
+            
+            System.out.println("Testing email service configuration...");
+            emailService.sendVerificationCode(testEmail, testCode);
+            
+            response.put("success", true);
+            response.put("message", "Email service configuration working");
+            response.put("testEmail", testEmail);
+            response.put("testCode", testCode);
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            System.out.println("Email config debug error: " + e.getMessage());
+            e.printStackTrace();
+            response.put("success", false);
+            response.put("message", "Email configuration error: " + e.getMessage());
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+    
+    // Helper methods for email verification
+    private String generateVerificationCode() {
+        Random random = new Random();
+        int code = 100000 + random.nextInt(900000);
+        return String.valueOf(code);
+    }
+    
+    private String sha256(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes());
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
         }
     }
 } 

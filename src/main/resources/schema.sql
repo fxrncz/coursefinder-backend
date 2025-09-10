@@ -56,3 +56,26 @@ CREATE TABLE IF NOT EXISTS password_reset (
 
 CREATE INDEX IF NOT EXISTS idx_password_reset_email ON password_reset(email);
 
+-- MBTI detailed information table
+CREATE TABLE IF NOT EXISTS mbti_details (
+    id SERIAL PRIMARY KEY,
+    mbti_type VARCHAR(10) UNIQUE NOT NULL,
+    title VARCHAR(100),
+    description TEXT,
+    learning_style_summary TEXT NOT NULL,
+    learning_style_details TEXT NOT NULL,
+    learning_style_environments TEXT NOT NULL,
+    learning_style_resources TEXT NOT NULL,
+    study_tips_summary TEXT NOT NULL,
+    study_tips_details TEXT NOT NULL,
+    study_tips_dos TEXT NOT NULL,
+    study_tips_donts TEXT NOT NULL,
+    study_tips_common_mistakes TEXT NOT NULL,
+    growth_strengths TEXT NOT NULL,
+    growth_weaknesses TEXT NOT NULL,
+    growth_opportunities TEXT NOT NULL,
+    growth_challenges TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_mbti_details_type ON mbti_details(mbti_type);
+

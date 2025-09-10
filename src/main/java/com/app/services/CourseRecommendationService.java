@@ -1,6 +1,5 @@
 package com.app.services;
 
-import com.app.services.TestResultService;
 import com.app.models.MbtiRiasecMapping;
 import com.app.repositories.MbtiRiasecMappingRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,14 +23,14 @@ public class CourseRecommendationService {
         List<String> goalTags = parseGoalTags(personalityResult.getStudentGoals());
         
         // Get recommendations based on MBTI and RIASEC combination
-        List<MbtiRiasecMapping> exactMatches = mappingRepository.findByMbtiTypeAndRiasecCodesOrderByMatchScore(
+        List<MbtiRiasecMapping> exactMatches = mappingRepository.findByMbtiTypeAndRiasecCodesOrderById(
                 mbtiType, riasecTopTwo);
         
         // Get additional recommendations based on MBTI only
-        List<MbtiRiasecMapping> mbtiMatches = mappingRepository.findByMbtiTypeOrderByMatchScoreDesc(mbtiType);
+        List<MbtiRiasecMapping> mbtiMatches = mappingRepository.findByMbtiType(mbtiType);
         
         // Get additional recommendations based on RIASEC only
-        List<MbtiRiasecMapping> riasecMatches = mappingRepository.findByRiasecCodesOrderByMatchScore(riasecTopTwo);
+        List<MbtiRiasecMapping> riasecMatches = mappingRepository.findByRiasecCodesOrderById(riasecTopTwo);
         
         // Build recommendation response
         CourseRecommendationDTO recommendation = new CourseRecommendationDTO();
@@ -60,25 +59,20 @@ public class CourseRecommendationService {
      * Get course recommendations by specific criteria
      */
     public List<CourseRecommendationItemDTO> getRecommendationsByMbti(String mbtiType, int limit) {
-        List<MbtiRiasecMapping> mappings = mappingRepository.findByMbtiTypeOrderByMatchScoreDesc(mbtiType);
+        List<MbtiRiasecMapping> mappings = mappingRepository.findByMbtiType(mbtiType);
         return limitAndConvert(mappings, limit);
     }
     
     public List<CourseRecommendationItemDTO> getRecommendationsByRiasec(List<String> riasecCodes, int limit) {
-        List<MbtiRiasecMapping> mappings = mappingRepository.findByRiasecCodesOrderByMatchScore(riasecCodes);
-        return limitAndConvert(mappings, limit);
-    }
-    
-    public List<CourseRecommendationItemDTO> getRecommendationsByCategory(String category, int limit) {
-        List<MbtiRiasecMapping> mappings = mappingRepository.findByCategory(category);
+        List<MbtiRiasecMapping> mappings = mappingRepository.findByRiasecCodesOrderById(riasecCodes);
         return limitAndConvert(mappings, limit);
     }
     
     /**
-     * Search courses by name
+     * Search courses by name (searching in suggested courses)
      */
     public List<CourseRecommendationItemDTO> searchCourses(String courseName, int limit) {
-        List<MbtiRiasecMapping> mappings = mappingRepository.findByCourseNameContainingIgnoreCase(courseName);
+        List<MbtiRiasecMapping> mappings = mappingRepository.findBySuggestedCoursesContainingIgnoreCase(courseName);
         return limitAndConvert(mappings, limit);
     }
     
@@ -89,9 +83,17 @@ public class CourseRecommendationService {
         CourseFilterOptionsDTO options = new CourseFilterOptionsDTO();
         options.setMbtiTypes(mappingRepository.findAllUniqueMbtiTypes());
         options.setRiasecCodes(mappingRepository.findAllUniqueRiasecCodes());
-        options.setCategories(mappingRepository.findAllUniqueCategories());
-        options.setUniversities(mappingRepository.findAllUniqueUniversities());
+        // Remove categories and universities as they no longer exist in the new schema
+        options.setCategories(new ArrayList<>());
+        options.setUniversities(new ArrayList<>());
         return options;
+    }
+    
+    /**
+     * Get detailed database statistics
+     */
+    public Object[] getDatabaseStatistics() {
+        return mappingRepository.getDetailedStatistics();
     }
     
     // Helper methods
@@ -147,19 +149,27 @@ public class CourseRecommendationService {
         dto.setId(mapping.getId());
         dto.setMbtiType(mapping.getMbtiType());
         dto.setRiasecCode(mapping.getRiasecCode());
-        dto.setCourseName(mapping.getCourseName());
-        dto.setCourseDescription(mapping.getCourseDescription());
-        dto.setCareerOptions(mapping.getCareerOptions());
-        dto.setUniversity(mapping.getUniversity());
-        dto.setProgramType(mapping.getProgramType());
-        dto.setDuration(mapping.getDuration());
-        dto.setRequirements(mapping.getRequirements());
-        dto.setSalaryRange(mapping.getSalaryRange());
-        dto.setJobOutlook(mapping.getJobOutlook());
-        dto.setSkillsNeeded(mapping.getSkillsNeeded());
-        dto.setWorkEnvironment(mapping.getWorkEnvironment());
-        dto.setMatchScore(mapping.getMatchScore());
-        dto.setCategory(mapping.getCategory());
+        dto.setSuggestedCourses(mapping.getSuggestedCourses());
+        dto.setCareerSuggestions(mapping.getCareerSuggestions());
+        dto.setLearningStyle(mapping.getLearningStyle());
+        dto.setStudyTips(mapping.getStudyTips());
+        dto.setPersonalityGrowthTips(mapping.getPersonalityGrowthTips());
+        
+        // Set default values for fields that no longer exist
+        dto.setCourseName("Multiple Options Available");
+        dto.setCourseDescription(mapping.getSuggestedCourses());
+        dto.setCareerOptions(mapping.getCareerSuggestions());
+        dto.setUniversity("Various Universities");
+        dto.setProgramType("Bachelor's Degree");
+        dto.setDuration("4 years");
+        dto.setRequirements("Standard admission requirements");
+        dto.setSalaryRange("Varies by field");
+        dto.setJobOutlook("Good");
+        dto.setSkillsNeeded(mapping.getStudyTips());
+        dto.setWorkEnvironment(mapping.getLearningStyle());
+        dto.setMatchScore(1.0);  // Default match score since it no longer exists
+        dto.setCategory("General");
+        
         return dto;
     }
     
@@ -212,6 +222,13 @@ public class CourseRecommendationService {
         private Long id;
         private String mbtiType;
         private String riasecCode;
+        private String suggestedCourses;
+        private String careerSuggestions;
+        private String learningStyle;
+        private String studyTips;
+        private String personalityGrowthTips;
+        
+        // Legacy fields for backward compatibility
         private String courseName;
         private String courseDescription;
         private String careerOptions;
@@ -274,6 +291,22 @@ public class CourseRecommendationService {
         
         public String getCategory() { return category; }
         public void setCategory(String category) { this.category = category; }
+        
+        // New field getters and setters
+        public String getSuggestedCourses() { return suggestedCourses; }
+        public void setSuggestedCourses(String suggestedCourses) { this.suggestedCourses = suggestedCourses; }
+        
+        public String getCareerSuggestions() { return careerSuggestions; }
+        public void setCareerSuggestions(String careerSuggestions) { this.careerSuggestions = careerSuggestions; }
+        
+        public String getLearningStyle() { return learningStyle; }
+        public void setLearningStyle(String learningStyle) { this.learningStyle = learningStyle; }
+        
+        public String getStudyTips() { return studyTips; }
+        public void setStudyTips(String studyTips) { this.studyTips = studyTips; }
+        
+        public String getPersonalityGrowthTips() { return personalityGrowthTips; }
+        public void setPersonalityGrowthTips(String personalityGrowthTips) { this.personalityGrowthTips = personalityGrowthTips; }
     }
     
     public static class CourseFilterOptionsDTO {

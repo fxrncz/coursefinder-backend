@@ -10,58 +10,40 @@ public class MbtiRiasecMapping {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Column(name = "mbti_type", length = 4)
+    @Column(name = "mbti_type", length = 10, nullable = false)
     private String mbtiType;
     
-    @Column(name = "riasec_code", length = 10)
+    @Column(name = "riasec_code", length = 10, nullable = false)
     private String riasecCode;
     
-    @Column(name = "course_name", length = 255)
-    private String courseName;
+    @Column(name = "suggested_courses", columnDefinition = "TEXT", nullable = false)
+    private String suggestedCourses;
     
-    @Column(name = "course_description", columnDefinition = "TEXT")
-    private String courseDescription;
+    @Column(name = "career_suggestions", columnDefinition = "TEXT", nullable = false)
+    private String careerSuggestions;
     
-    @Column(name = "career_options", columnDefinition = "TEXT")
-    private String careerOptions;
+    @Column(name = "learning_style", columnDefinition = "TEXT", nullable = false)
+    private String learningStyle;
     
-    @Column(name = "university", length = 255)
-    private String university;
+    @Column(name = "study_tips", columnDefinition = "TEXT", nullable = false)
+    private String studyTips;
     
-    @Column(name = "program_type", length = 100)
-    private String programType;
-    
-    @Column(name = "duration", length = 50)
-    private String duration;
-    
-    @Column(name = "requirements", columnDefinition = "TEXT")
-    private String requirements;
-    
-    @Column(name = "salary_range", length = 100)
-    private String salaryRange;
-    
-    @Column(name = "job_outlook", length = 100)
-    private String jobOutlook;
-    
-    @Column(name = "skills_needed", columnDefinition = "TEXT")
-    private String skillsNeeded;
-    
-    @Column(name = "work_environment", columnDefinition = "TEXT")
-    private String workEnvironment;
-    
-    @Column(name = "match_score", columnDefinition = "DECIMAL(3,2)")
-    private Double matchScore;
-    
-    @Column(name = "category", length = 100)
-    private String category;
+    @Column(name = "personality_growth_tips", columnDefinition = "TEXT", nullable = false)
+    private String personalityGrowthTips;
     
     // Constructors
     public MbtiRiasecMapping() {}
     
-    public MbtiRiasecMapping(String mbtiType, String riasecCode, String courseName) {
+    public MbtiRiasecMapping(String mbtiType, String riasecCode, String suggestedCourses, 
+                            String careerSuggestions, String learningStyle, String studyTips, 
+                            String personalityGrowthTips) {
         this.mbtiType = mbtiType;
         this.riasecCode = riasecCode;
-        this.courseName = courseName;
+        this.suggestedCourses = suggestedCourses;
+        this.careerSuggestions = careerSuggestions;
+        this.learningStyle = learningStyle;
+        this.studyTips = studyTips;
+        this.personalityGrowthTips = personalityGrowthTips;
     }
     
     // Getters and Setters
@@ -89,108 +71,44 @@ public class MbtiRiasecMapping {
         this.riasecCode = riasecCode;
     }
     
-    public String getCourseName() {
-        return courseName;
+    public String getSuggestedCourses() {
+        return suggestedCourses;
     }
     
-    public void setCourseName(String courseName) {
-        this.courseName = courseName;
+    public void setSuggestedCourses(String suggestedCourses) {
+        this.suggestedCourses = suggestedCourses;
     }
     
-    public String getCourseDescription() {
-        return courseDescription;
+    public String getCareerSuggestions() {
+        return careerSuggestions;
     }
     
-    public void setCourseDescription(String courseDescription) {
-        this.courseDescription = courseDescription;
+    public void setCareerSuggestions(String careerSuggestions) {
+        this.careerSuggestions = careerSuggestions;
     }
     
-    public String getCareerOptions() {
-        return careerOptions;
+    public String getLearningStyle() {
+        return learningStyle;
     }
     
-    public void setCareerOptions(String careerOptions) {
-        this.careerOptions = careerOptions;
+    public void setLearningStyle(String learningStyle) {
+        this.learningStyle = learningStyle;
     }
     
-    public String getUniversity() {
-        return university;
+    public String getStudyTips() {
+        return studyTips;
     }
     
-    public void setUniversity(String university) {
-        this.university = university;
+    public void setStudyTips(String studyTips) {
+        this.studyTips = studyTips;
     }
     
-    public String getProgramType() {
-        return programType;
+    public String getPersonalityGrowthTips() {
+        return personalityGrowthTips;
     }
     
-    public void setProgramType(String programType) {
-        this.programType = programType;
-    }
-    
-    public String getDuration() {
-        return duration;
-    }
-    
-    public void setDuration(String duration) {
-        this.duration = duration;
-    }
-    
-    public String getRequirements() {
-        return requirements;
-    }
-    
-    public void setRequirements(String requirements) {
-        this.requirements = requirements;
-    }
-    
-    public String getSalaryRange() {
-        return salaryRange;
-    }
-    
-    public void setSalaryRange(String salaryRange) {
-        this.salaryRange = salaryRange;
-    }
-    
-    public String getJobOutlook() {
-        return jobOutlook;
-    }
-    
-    public void setJobOutlook(String jobOutlook) {
-        this.jobOutlook = jobOutlook;
-    }
-    
-    public String getSkillsNeeded() {
-        return skillsNeeded;
-    }
-    
-    public void setSkillsNeeded(String skillsNeeded) {
-        this.skillsNeeded = skillsNeeded;
-    }
-    
-    public String getWorkEnvironment() {
-        return workEnvironment;
-    }
-    
-    public void setWorkEnvironment(String workEnvironment) {
-        this.workEnvironment = workEnvironment;
-    }
-    
-    public Double getMatchScore() {
-        return matchScore;
-    }
-    
-    public void setMatchScore(Double matchScore) {
-        this.matchScore = matchScore;
-    }
-    
-    public String getCategory() {
-        return category;
-    }
-    
-    public void setCategory(String category) {
-        this.category = category;
+    public void setPersonalityGrowthTips(String personalityGrowthTips) {
+        this.personalityGrowthTips = personalityGrowthTips;
     }
     
     @Override
@@ -199,9 +117,9 @@ public class MbtiRiasecMapping {
                 "id=" + id +
                 ", mbtiType='" + mbtiType + '\'' +
                 ", riasecCode='" + riasecCode + '\'' +
-                ", courseName='" + courseName + '\'' +
-                ", university='" + university + '\'' +
-                ", matchScore=" + matchScore +
+                ", suggestedCourses='" + suggestedCourses + '\'' +
+                ", careerSuggestions='" + careerSuggestions + '\'' +
+                ", learningStyle='" + learningStyle + '\'' +
                 '}';
     }
 }

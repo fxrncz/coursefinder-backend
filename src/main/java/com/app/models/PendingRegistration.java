@@ -34,6 +34,17 @@ public class PendingRegistration {
     @Column(name = "created_at", nullable = false)
     private java.time.LocalDateTime createdAt = java.time.LocalDateTime.now();
 
+    // Constructors
+    public PendingRegistration() {}
+
+    public PendingRegistration(String username, String email, String passwordHash, String codeHash, java.time.LocalDateTime expiresAt) {
+        this.username = username;
+        this.email = email;
+        this.passwordHash = passwordHash;
+        this.codeHash = codeHash;
+        this.expiresAt = expiresAt;
+    }
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 

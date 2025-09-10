@@ -1,8 +1,9 @@
 package com.app.controllers;
 
 import com.app.models.User;
-import com.app.repositories.PasswordResetRepository;
+import com.app.models.PasswordReset;
 import com.app.repositories.UserRepository;
+import com.app.repositories.PasswordResetRepository;
 import com.app.security.PasswordUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +13,9 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.time.LocalDateTime;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 @RestController
 @RequestMapping("/api/password")
@@ -31,7 +35,36 @@ public class PasswordResetController {
         try {
             String email = request.get("email").toString();
             String newPassword = request.get("newPassword").toString();
+            String token = request.get("token").toString();
 
+            // First verify the reset token
+            Optional<PasswordReset> prOpt = passwordResetRepository.findTopByEmailOrderByCreatedAtDesc(email);
+            if (prOpt.isEmpty()) {
+                res.put("success", false);
+                res.put("message", "No reset request found");
+                return ResponseEntity.badRequest().body(res);
+            }
+
+            PasswordReset pr = prOpt.get();
+            if (pr.isConsumed()) {
+                res.put("success", false);
+                res.put("message", "Reset link already used");
+                return ResponseEntity.badRequest().body(res);
+            }
+            if (LocalDateTime.now().isAfter(pr.getExpiresAt())) {
+                res.put("success", false);
+                res.put("message", "Reset link expired");
+                return ResponseEntity.badRequest().body(res);
+            }
+            if (!sha256(token).equals(pr.getCodeHash())) {
+                pr.setAttempts(pr.getAttempts() + 1);
+                passwordResetRepository.save(pr);
+                res.put("success", false);
+                res.put("message", "Invalid reset link");
+                return ResponseEntity.badRequest().body(res);
+            }
+
+            // Token is valid, now update the password
             Optional<User> userOpt = userRepository.findByEmail(email);
             if (userOpt.isEmpty()) {
                 res.put("success", false);
@@ -59,9 +92,14 @@ public class PasswordResetController {
                 return ResponseEntity.badRequest().body(res);
             }
 
+            // Update password and consume the reset token
             String hashed = PasswordUtil.hashPassword(newPassword);
             user.setPassword(hashed);
             userRepository.save(user);
+            
+            // Mark the reset token as consumed
+            pr.setConsumed(true);
+            passwordResetRepository.save(pr);
 
             res.put("success", true);
             res.put("message", "Password updated successfully");
@@ -70,6 +108,22 @@ public class PasswordResetController {
             res.put("success", false);
             res.put("message", e.getMessage());
             return ResponseEntity.status(500).body(res);
+        }
+    }
+
+    private String sha256(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes());
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
         }
     }
 }

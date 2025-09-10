@@ -49,6 +49,14 @@ public class EmailService {
         }
     }
 
+    public void sendVerificationSuccessEmail(String toEmail, String username) {
+        if ("sendgrid".equalsIgnoreCase(emailProvider)) {
+            sendSuccessWithSendGrid(toEmail, username);
+        } else {
+            sendSuccessWithResend(toEmail, username);
+        }
+    }
+
     private void sendWithSendGrid(String toEmail, String code) {
         if (sendgridApiKey == null || sendgridApiKey.isEmpty()) {
             throw new IllegalStateException("SENDGRID_API_KEY is not configured");
@@ -95,7 +103,7 @@ public class EmailService {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
         var response = restTemplate.postForEntity(SENDGRID_SEND_ENDPOINT, request, String.class);
         if (!response.getStatusCode().is2xxSuccessful()) {
-            throw new RuntimeException("SendGrid send failed: " + response.getStatusCodeValue() + " - " + response.getBody());
+            throw new RuntimeException("SendGrid send failed: " + response.getStatusCode().value() + " - " + response.getBody());
         }
     }
 
@@ -126,7 +134,7 @@ public class EmailService {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
         var response = restTemplate.postForEntity("https://api.resend.com/emails", request, String.class);
         if (!response.getStatusCode().is2xxSuccessful()) {
-            throw new RuntimeException("Resend send failed: " + response.getStatusCodeValue() + " - " + response.getBody());
+            throw new RuntimeException("Resend send failed: " + response.getStatusCode().value() + " - " + response.getBody());
         }
     }
 
@@ -179,7 +187,7 @@ public class EmailService {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
         var response = restTemplate.postForEntity(SENDGRID_SEND_ENDPOINT, request, String.class);
         if (!response.getStatusCode().is2xxSuccessful()) {
-            throw new RuntimeException("SendGrid send failed: " + response.getStatusCodeValue() + " - " + response.getBody());
+            throw new RuntimeException("SendGrid send failed: " + response.getStatusCode().value() + " - " + response.getBody());
         }
     }
 
@@ -215,7 +223,7 @@ public class EmailService {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
         var response = restTemplate.postForEntity("https://api.resend.com/emails", request, String.class);
         if (!response.getStatusCode().is2xxSuccessful()) {
-            throw new RuntimeException("Resend send failed: " + response.getStatusCodeValue() + " - " + response.getBody());
+            throw new RuntimeException("Resend send failed: " + response.getStatusCode().value() + " - " + response.getBody());
         }
     }
 
@@ -234,6 +242,108 @@ public class EmailService {
             return from.substring(0, lt).trim();
         }
         return "";
+    }
+
+    private void sendSuccessWithSendGrid(String toEmail, String username) {
+        if (sendgridApiKey == null || sendgridApiKey.isEmpty()) {
+            throw new IllegalStateException("SENDGRID_API_KEY is not configured");
+        }
+        if (sendgridFrom == null || sendgridFrom.isEmpty()) {
+            throw new IllegalStateException("sendgrid.from is not configured");
+        }
+
+        RestTemplate restTemplate = new RestTemplate();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(sendgridApiKey);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("from", Map.of("email", extractEmail(sendgridFrom), "name", extractName(sendgridFrom)));
+        body.put("reply_to", Map.of("email", extractEmail(sendgridFrom), "name", extractName(sendgridFrom)));
+        body.put("personalizations", new Object[]{ Map.of(
+                "to", new Object[]{ Map.of("email", toEmail) },
+                "headers", Map.of(
+                        "X-Priority", "1",
+                        "Priority", "urgent",
+                        "X-MSMail-Priority", "High"
+                )
+        ) });
+        body.put("subject", "Welcome to CourseFinder - Account Verified!");
+        body.put("categories", new String[]{"transactional", "account_verified"});
+        String html = "<div style='font-family:Arial,sans-serif;font-size:16px;color:#333'>" +
+                "<h2 style='color:#A75F00;margin-bottom:8px'>🎉 Welcome to CourseFinder!</h2>" +
+                "<p>Hi " + username + ",</p>" +
+                "<p>Your email has been successfully verified and your account is now ready to use!</p>" +
+                "<p>You can now:</p>" +
+                "<ul style='margin:16px 0;padding-left:20px'>" +
+                "<li>Take personality and career assessments</li>" +
+                "<li>Get personalized course recommendations</li>" +
+                "<li>Explore career paths that match your interests</li>" +
+                "<li>Access your personalized dashboard</li>" +
+                "</ul>" +
+                "<p style='margin:16px 0'>" +
+                "<a href='http://localhost:3000/userpage' style='display:inline-block;background:#A75F00;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:600'>Go to Dashboard</a>" +
+                "</p>" +
+                "<p style='font-size:12px;color:#666'>Thank you for joining CourseFinder!</p>" +
+                "</div>";
+        String text = "Welcome to CourseFinder!\n\nHi " + username + ",\n\nYour email has been successfully verified and your account is now ready to use!\n\nYou can now take assessments, get course recommendations, and explore career paths.\n\nVisit: http://localhost:3000/userpage\n\nThank you for joining CourseFinder!";
+        body.put("content", new Object[]{
+                Map.of("type", "text/plain", "value", text),
+                Map.of("type", "text/html", "value", html)
+        });
+        body.put("tracking_settings", Map.of(
+                "click_tracking", Map.of("enable", false),
+                "open_tracking", Map.of("enable", false)
+        ));
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+        var response = restTemplate.postForEntity(SENDGRID_SEND_ENDPOINT, request, String.class);
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            throw new RuntimeException("SendGrid send failed: " + response.getStatusCode().value() + " - " + response.getBody());
+        }
+    }
+
+    private void sendSuccessWithResend(String toEmail, String username) {
+        if (resendApiKey == null || resendApiKey.isEmpty()) {
+            throw new IllegalStateException("RESEND_API_KEY is not configured");
+        }
+
+        RestTemplate restTemplate = new RestTemplate();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(resendApiKey);
+
+        Map<String, Object> body = new HashMap<>();
+        String fromAddress = (resendFrom != null && !resendFrom.isEmpty()) ? resendFrom : "onboarding@resend.dev";
+        body.put("from", fromAddress);
+        body.put("to", new String[]{ toEmail });
+        body.put("subject", "Welcome to CourseFinder - Account Verified!");
+        String html = "<div style='font-family:Arial,sans-serif;font-size:16px;color:#333'>" +
+                "<h2 style='color:#A75F00;margin-bottom:8px'>🎉 Welcome to CourseFinder!</h2>" +
+                "<p>Hi " + username + ",</p>" +
+                "<p>Your email has been successfully verified and your account is now ready to use!</p>" +
+                "<p>You can now:</p>" +
+                "<ul style='margin:16px 0;padding-left:20px'>" +
+                "<li>Take personality and career assessments</li>" +
+                "<li>Get personalized course recommendations</li>" +
+                "<li>Explore career paths that match your interests</li>" +
+                "<li>Access your personalized dashboard</li>" +
+                "</ul>" +
+                "<p style='margin:16px 0'>" +
+                "<a href='http://localhost:3000/userpage' style='display:inline-block;background:#A75F00;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:600'>Go to Dashboard</a>" +
+                "</p>" +
+                "<p style='font-size:12px;color:#666'>Thank you for joining CourseFinder!</p>" +
+                "</div>";
+        body.put("html", html);
+        body.put("text", "Welcome to CourseFinder!\n\nHi " + username + ",\n\nYour email has been successfully verified and your account is now ready to use!\n\nYou can now take assessments, get course recommendations, and explore career paths.\n\nVisit: http://localhost:3000/userpage\n\nThank you for joining CourseFinder!");
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+        var response = restTemplate.postForEntity("https://api.resend.com/emails", request, String.class);
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            throw new RuntimeException("Resend send failed: " + response.getStatusCode().value() + " - " + response.getBody());
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 package com.app.controllers;
 
 import com.app.dto.PersonalityTestSubmissionDTO;
+import com.app.dto.EnhancedTestResultDTO;
 import com.app.services.TestResultService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -352,6 +353,129 @@ public class PersonalityTestController {
         } catch (Exception e) {
             response.put("status", "ERROR");
             response.put("message", "Personality test service health check failed: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
+     * Get enhanced test result with detailed MBTI information for user
+     */
+    @GetMapping("/result/enhanced/user/{userId}")
+    public ResponseEntity<Map<String, Object>> getEnhancedResultForUser(@PathVariable Long userId) {
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            Optional<EnhancedTestResultDTO> result = testResultService.getEnhancedResultForUser(userId);
+
+            if (result.isPresent()) {
+                response.put("status", "SUCCESS");
+                response.put("result", result.get());
+                return ResponseEntity.ok(response);
+            } else {
+                response.put("status", "NOT_FOUND");
+                response.put("message", "No test results found for this user");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+
+        } catch (Exception e) {
+            response.put("status", "ERROR");
+            response.put("message", "Failed to retrieve enhanced test result: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    /**
+     * Get enhanced test result by session ID (for both users and guests)
+     */
+    @GetMapping("/result/enhanced/session/{sessionId}")
+    public ResponseEntity<Map<String, Object>> getEnhancedResultBySessionId(@PathVariable String sessionId) {
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            UUID sessionUUID = UUID.fromString(sessionId);
+            Optional<EnhancedTestResultDTO> result = testResultService.getEnhancedResultBySessionId(sessionUUID);
+
+            if (result.isPresent()) {
+                response.put("status", "SUCCESS");
+                response.put("result", result.get());
+                return ResponseEntity.ok(response);
+            } else {
+                response.put("status", "NOT_FOUND");
+                response.put("message", "No test results found for this session");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+
+        } catch (IllegalArgumentException e) {
+            response.put("status", "ERROR");
+            response.put("message", "Invalid session ID format");
+            return ResponseEntity.badRequest().body(response);
+        } catch (Exception e) {
+            response.put("status", "ERROR");
+            response.put("message", "Failed to retrieve enhanced test result: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    /**
+     * Regenerate course descriptions for existing test results
+     */
+    @PostMapping("/result/regenerate-descriptions/{sessionId}")
+    public ResponseEntity<Map<String, Object>> regenerateCourseDescriptions(@PathVariable String sessionId) {
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            UUID sessionUUID = UUID.fromString(sessionId);
+            boolean success = testResultService.regenerateCourseDescriptions(sessionUUID);
+
+            if (success) {
+                response.put("status", "SUCCESS");
+                response.put("message", "Course descriptions regenerated successfully");
+                return ResponseEntity.ok(response);
+            } else {
+                response.put("status", "NOT_FOUND");
+                response.put("message", "No test results found for this session");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+
+        } catch (IllegalArgumentException e) {
+            response.put("status", "ERROR");
+            response.put("message", "Invalid session ID format");
+            return ResponseEntity.badRequest().body(response);
+        } catch (Exception e) {
+            response.put("status", "ERROR");
+            response.put("message", "Failed to regenerate course descriptions: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
+     * Get enhanced test result with detailed MBTI information for guest
+     */
+    @GetMapping("/result/enhanced/guest/{guestToken}")
+    public ResponseEntity<Map<String, Object>> getEnhancedResultForGuest(@PathVariable String guestToken) {
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            UUID guestUUID = UUID.fromString(guestToken);
+            Optional<EnhancedTestResultDTO> result = testResultService.getEnhancedResultForGuest(guestUUID);
+
+            if (result.isPresent()) {
+                response.put("status", "SUCCESS");
+                response.put("result", result.get());
+                return ResponseEntity.ok(response);
+            } else {
+                response.put("status", "NOT_FOUND");
+                response.put("message", "No test results found for this guest");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+
+        } catch (IllegalArgumentException e) {
+            response.put("status", "ERROR");
+            response.put("message", "Invalid guest token format");
+            return ResponseEntity.badRequest().body(response);
+        } catch (Exception e) {
+            response.put("status", "ERROR");
+            response.put("message", "Failed to retrieve enhanced test result: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
