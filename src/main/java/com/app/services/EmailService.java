@@ -30,8 +30,12 @@ public class EmailService {
     @Value("${resend.api.key:}")
     private String resendApiKey;
 
-    @Value("${resend.from:}")
+    @Value("${resend.from:}") 
     private String resendFrom;
+
+    // Frontend URL configuration
+    @Value("${frontend.url:http://localhost:3000}")
+    private String frontendUrl;
 
     public void sendVerificationCode(String toEmail, String code) {
         if ("sendgrid".equalsIgnoreCase(emailProvider)) {
@@ -283,11 +287,11 @@ public class EmailService {
                 "<li>Access your personalized dashboard</li>" +
                 "</ul>" +
                 "<p style='margin:16px 0'>" +
-                "<a href='http://localhost:3000/userpage' style='display:inline-block;background:#A75F00;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:600'>Go to Dashboard</a>" +
+                "<a href='" + frontendUrl + "/userpage' style='display:inline-block;background:#A75F00;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:600'>Go to Dashboard</a>" +
                 "</p>" +
                 "<p style='font-size:12px;color:#666'>Thank you for joining CourseFinder!</p>" +
                 "</div>";
-        String text = "Welcome to CourseFinder!\n\nHi " + username + ",\n\nYour email has been successfully verified and your account is now ready to use!\n\nYou can now take assessments, get course recommendations, and explore career paths.\n\nVisit: http://localhost:3000/userpage\n\nThank you for joining CourseFinder!";
+        String text = "Welcome to CourseFinder!\n\nHi " + username + ",\n\nYour email has been successfully verified and your account is now ready to use!\n\nYou can now take assessments, get course recommendations, and explore career paths.\n\nVisit: " + frontendUrl + "/userpage\n\nThank you for joining CourseFinder!";
         body.put("content", new Object[]{
                 Map.of("type", "text/plain", "value", text),
                 Map.of("type", "text/html", "value", html)
@@ -332,12 +336,12 @@ public class EmailService {
                 "<li>Access your personalized dashboard</li>" +
                 "</ul>" +
                 "<p style='margin:16px 0'>" +
-                "<a href='http://localhost:3000/userpage' style='display:inline-block;background:#A75F00;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:600'>Go to Dashboard</a>" +
+                "<a href='" + frontendUrl + "/userpage' style='display:inline-block;background:#A75F00;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:600'>Go to Dashboard</a>" +
                 "</p>" +
                 "<p style='font-size:12px;color:#666'>Thank you for joining CourseFinder!</p>" +
                 "</div>";
         body.put("html", html);
-        body.put("text", "Welcome to CourseFinder!\n\nHi " + username + ",\n\nYour email has been successfully verified and your account is now ready to use!\n\nYou can now take assessments, get course recommendations, and explore career paths.\n\nVisit: http://localhost:3000/userpage\n\nThank you for joining CourseFinder!");
+        body.put("text", "Welcome to CourseFinder!\n\nHi " + username + ",\n\nYour email has been successfully verified and your account is now ready to use!\n\nYou can now take assessments, get course recommendations, and explore career paths.\n\nVisit: " + frontendUrl + "/userpage\n\nThank you for joining CourseFinder!");
 
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
         var response = restTemplate.postForEntity("https://api.resend.com/emails", request, String.class);
