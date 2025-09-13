@@ -287,7 +287,7 @@ public class EmailService {
                 "<li>Access your personalized dashboard</li>" +
                 "</ul>" +
                 "<p style='margin:16px 0'>" +
-                "<a href='" + frontendUrl + "/userpage' style='display:inline-block;background:#A75F00;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:600'>Go to Dashboard</a>" +
+                "<a href='" + frontendUrl + "/userpage' style='display:inline-block;background:#A75F00;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:600'>Go to your account</a>" +
                 "</p>" +
                 "<p style='font-size:12px;color:#666'>Thank you for joining CourseFinder!</p>" +
                 "</div>";
@@ -336,7 +336,7 @@ public class EmailService {
                 "<li>Access your personalized dashboard</li>" +
                 "</ul>" +
                 "<p style='margin:16px 0'>" +
-                "<a href='" + frontendUrl + "/userpage' style='display:inline-block;background:#A75F00;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:600'>Go to Dashboard</a>" +
+                "<a href='" + frontendUrl + "/userpage' style='display:inline-block;background:#A75F00;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:600'>Go to your account</a>" +
                 "</p>" +
                 "<p style='font-size:12px;color:#666'>Thank you for joining CourseFinder!</p>" +
                 "</div>";
