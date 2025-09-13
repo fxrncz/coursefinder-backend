@@ -2,11 +2,9 @@ package com.app.controllers;
 
 import com.app.models.User;
 import com.app.models.PendingRegistration;
-import com.app.models.EmailVerification;
 import com.app.repositories.UserRepository;
 import com.app.repositories.TestResultRepository;
 import com.app.repositories.PendingRegistrationRepository;
-import com.app.repositories.EmailVerificationRepository;
 import com.app.services.EmailService;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.app.security.PasswordUtil;
@@ -36,8 +34,6 @@ public class AuthController {
     @Autowired
     private PendingRegistrationRepository pendingRegistrationRepository;
     
-    @Autowired
-    private EmailVerificationRepository emailVerificationRepository;
     
     @Autowired
     private EmailService emailService;
@@ -123,17 +119,29 @@ public class AuthController {
                 return ResponseEntity.badRequest().body(response);
             }
             
+            // Clean up all expired registrations first
+            pendingRegistrationRepository.deleteExpiredRegistrations(LocalDateTime.now());
+            
             // Check if email already exists in pending registrations
-            if (pendingRegistrationRepository.findByEmail(email).isPresent()) {
-                response.put("success", false);
-                response.put("message", "Email verification already in progress. Please check your email or try again later.");
-                return ResponseEntity.badRequest().body(response);
+            Optional<PendingRegistration> existingPending = pendingRegistrationRepository.findByEmail(email);
+            if (existingPending.isPresent()) {
+                PendingRegistration pending = existingPending.get();
+                if (pending.isExpired()) {
+                    // This shouldn't happen after cleanup, but just in case
+                    pendingRegistrationRepository.delete(pending);
+                    System.out.println("Deleted expired pending registration for: " + email + " - allowing re-registration");
+                } else if (!pending.isConsumed()) {
+                    // Only block if there's an active (non-expired) pending registration
+                    response.put("success", false);
+                    response.put("message", "Email verification already in progress. Please check your email or try again later.");
+                    return ResponseEntity.badRequest().body(response);
+                }
             }
             
             // Generate verification code
             String code = generateVerificationCode();
             String codeHash = sha256(code);
-            LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(10);
+            LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(5); // 5 minutes expiration
             
             // Hash password
             String hashedPassword = PasswordUtil.hashPassword(password);
@@ -146,12 +154,6 @@ public class AuthController {
             System.out.println("Saving pending registration for: " + email);
             PendingRegistration savedPending = pendingRegistrationRepository.save(pendingRegistration);
             System.out.println("Pending registration saved with ID: " + savedPending.getId());
-            
-            // Create email verification record
-            EmailVerification emailVerification = new EmailVerification(null, email, codeHash, expiresAt);
-            System.out.println("Saving email verification for: " + email);
-            EmailVerification savedVerification = emailVerificationRepository.save(emailVerification);
-            System.out.println("Email verification saved with ID: " + savedVerification.getId());
             
             // Send verification email
             try {
@@ -392,6 +394,18 @@ public class AuthController {
             
             User user = userOptional.get();
             String username = user.getUsername();
+            String email = user.getEmail();
+            
+            // Send account deletion confirmation email BEFORE deleting the account
+            try {
+                System.out.println("Attempting to send account deletion email to: " + email + " for user: " + username);
+                emailService.sendAccountDeletionEmail(email, username);
+                System.out.println("✅ Account deletion email sent successfully to: " + email);
+            } catch (Exception emailError) {
+                System.err.println("❌ Failed to send account deletion email to " + email + ": " + emailError.getMessage());
+                emailError.printStackTrace();
+                // Don't fail account deletion if email fails, but log it
+            }
             
             // Delete user's test results first to maintain referential integrity and privacy
             try {
@@ -445,6 +459,43 @@ public class AuthController {
         } catch (Exception e) {
             response.put("success", false);
             response.put("message", "Email test failed: " + e.getMessage());
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+
+    // Test endpoint for account deletion email
+    @PostMapping("/test-deletion-email")
+    public ResponseEntity<Map<String, Object>> testDeletionEmail(@RequestBody Map<String, String> request) {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            String testEmail = request.get("email");
+            String testUsername = request.get("username");
+            
+            if (testEmail == null || testEmail.trim().isEmpty()) {
+                response.put("success", false);
+                response.put("message", "Email is required");
+                return ResponseEntity.badRequest().body(response);
+            }
+            
+            if (testUsername == null || testUsername.trim().isEmpty()) {
+                testUsername = "TestUser";
+            }
+            
+            System.out.println("🧪 Testing account deletion email to: " + testEmail + " for user: " + testUsername);
+            
+            emailService.sendAccountDeletionEmail(testEmail, testUsername);
+            
+            response.put("success", true);
+            response.put("message", "Account deletion test email sent successfully");
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            System.out.println("Test deletion email error: " + e.getMessage());
+            e.printStackTrace();
+            response.put("success", false);
+            response.put("message", "Test deletion email failed: " + e.getMessage());
             return ResponseEntity.status(500).body(response);
         }
     }

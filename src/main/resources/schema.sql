@@ -13,20 +13,6 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
--- Email verification table
-CREATE TABLE IF NOT EXISTS email_verification (
-    id SERIAL PRIMARY KEY,
-    user_id BIGINT,
-    email VARCHAR(100) NOT NULL,
-    code_hash VARCHAR(128) NOT NULL,
-    expires_at TIMESTAMP NOT NULL,
-    consumed BOOLEAN NOT NULL DEFAULT FALSE,
-    attempts INT NOT NULL DEFAULT 0,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_email_verification_email ON email_verification(email);
-
 -- Pending user registration (store until email verified)
 CREATE TABLE IF NOT EXISTS pending_registration (
     id SERIAL PRIMARY KEY,

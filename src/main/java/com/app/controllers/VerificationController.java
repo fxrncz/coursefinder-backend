@@ -1,15 +1,14 @@
 package com.app.controllers;
 
-import com.app.models.EmailVerification;
 import com.app.models.User;
 import com.app.models.PendingRegistration;
-import com.app.repositories.EmailVerificationRepository;
 import com.app.repositories.PasswordResetRepository;
 import com.app.models.PasswordReset;
 import com.app.repositories.UserRepository;
 import com.app.repositories.PendingRegistrationRepository;
 import com.app.services.EmailService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,9 +27,6 @@ import java.util.Random;
 public class VerificationController {
 
     @Autowired
-    private EmailVerificationRepository emailVerificationRepository;
-
-    @Autowired
     private UserRepository userRepository;
 
     @Autowired
@@ -42,6 +38,10 @@ public class VerificationController {
     @Autowired
     private PasswordResetRepository passwordResetRepository;
 
+    // Frontend URL configuration
+    @Value("${frontend.url:https://coursefinder-sti.vercel.app}")
+    private String frontendUrl;
+
     @PostMapping("/send-code")
     @Transactional
     public ResponseEntity<Map<String, Object>> sendCode(@RequestBody Map<String, Object> request) {
@@ -49,11 +49,21 @@ public class VerificationController {
         try {
             String email = request.get("email").toString();
             String purpose = request.getOrDefault("purpose", "register").toString();
-            // If a real user exists already, we treat it as account verification or other flows.
-            // For registration flow, a PendingRegistration must exist.
+            
+            // Clean up expired registrations first
+            pendingRegistrationRepository.deleteExpiredRegistrations(LocalDateTime.now());
+            
+            // For registration flow, a PendingRegistration must exist
             Optional<PendingRegistration> pendingOpt = pendingRegistrationRepository.findByEmail(email);
             Optional<User> userOpt = userRepository.findByEmail(email);
             Long userId = userOpt.map(User::getId).orElse(null);
+
+            // Check if there's an expired pending registration and clean it up
+            if (pendingOpt.isPresent() && pendingOpt.get().isExpired()) {
+                pendingRegistrationRepository.delete(pendingOpt.get());
+                System.out.println("Deleted expired pending registration for: " + email + " during send-code");
+                pendingOpt = Optional.empty(); // Clear the optional
+            }
 
             if (userId == null && pendingOpt.isEmpty()) {
                 res.put("success", false);
@@ -63,7 +73,7 @@ public class VerificationController {
 
             String code = generateCode();
             String codeHash = sha256(code);
-            LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(10);
+            LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(5); // 5 minutes expiration
 
             if ("reset".equalsIgnoreCase(purpose)) {
                 // Password reset flow via tokenized link
@@ -76,8 +86,12 @@ public class VerificationController {
                 passwordResetRepository.save(pr);
                 
                 // Generate reset link
-                String resetBaseUrl = request.getOrDefault("resetBaseUrl", "http://localhost:3000/reset-password").toString();
+                String resetBaseUrl = request.getOrDefault("resetBaseUrl", frontendUrl + "/reset-password").toString();
                 String resetLink = resetBaseUrl + "?email=" + email + "&token=" + code;
+                
+                System.out.println("🔗 Password Reset: Frontend URL = " + frontendUrl);
+                System.out.println("🔗 Password Reset: Reset Base URL = " + resetBaseUrl);
+                System.out.println("🔗 Password Reset: Generated Reset Link = " + resetLink);
                 
                 // Send reset link email
                 try {
@@ -88,14 +102,15 @@ public class VerificationController {
                     // Don't fail the request if email fails
                 }
             } else {
-                // Registration flow
-                EmailVerification ev = new EmailVerification(userId, email, codeHash, expiresAt);
-                emailVerificationRepository.save(ev);
-                pendingOpt.ifPresent(p -> {
-                    p.setCodeHash(codeHash);
-                    p.setExpiresAt(expiresAt);
-                    pendingRegistrationRepository.save(p);
-                });
+                // Registration flow - update existing pending registration with new code
+                if (pendingOpt.isPresent()) {
+                    PendingRegistration pending = pendingOpt.get();
+                    pending.setCodeHash(codeHash);
+                    pending.setExpiresAt(expiresAt);
+                    pending.setAttempts(0); // Reset attempts for new code
+                    pendingRegistrationRepository.save(pending);
+                    System.out.println("Updated pending registration with new code for: " + email);
+                }
                 emailService.sendVerificationCode(email, code);
             }
 
@@ -150,67 +165,68 @@ public class VerificationController {
                 return ResponseEntity.ok(res);
             }
 
-            Optional<EmailVerification> evOpt = emailVerificationRepository.findTopByEmailOrderByCreatedAtDesc(email);
-            if (evOpt.isEmpty()) {
+            // Clean up expired registrations first
+            pendingRegistrationRepository.deleteExpiredRegistrations(LocalDateTime.now());
+
+            // Find the pending registration
+            Optional<PendingRegistration> pendingOpt = pendingRegistrationRepository.findByEmail(email);
+            if (pendingOpt.isEmpty()) {
                 res.put("success", false);
-                res.put("message", "No verification request found");
+                res.put("message", "No pending registration found for this email");
                 return ResponseEntity.badRequest().body(res);
             }
 
-            EmailVerification ev = evOpt.get();
-            if (ev.isConsumed()) {
-                res.put("success", false);
-                res.put("message", "Code already used");
+            PendingRegistration pending = pendingOpt.get();
+            
+            // Check if registration can be verified
+            if (!pending.canAttemptVerification()) {
+                if (pending.isConsumed()) {
+                    res.put("success", false);
+                    res.put("message", "Registration already completed");
+                } else if (pending.isExpired()) {
+                    res.put("success", false);
+                    res.put("message", "Verification code expired. Please request a new one.");
+                } else {
+                    res.put("success", false);
+                    res.put("message", "Too many attempts. Please request a new code");
+                }
                 return ResponseEntity.badRequest().body(res);
             }
-            if (LocalDateTime.now().isAfter(ev.getExpiresAt())) {
-                res.put("success", false);
-                res.put("message", "Code expired");
-                return ResponseEntity.badRequest().body(res);
-            }
-            if (!sha256(code).equals(ev.getCodeHash())) {
-                ev.setAttempts(ev.getAttempts() + 1);
-                emailVerificationRepository.save(ev);
+
+            // Verify the code
+            if (!sha256(code).equals(pending.getCodeHash())) {
+                pending.incrementAttempts();
+                pendingRegistrationRepository.save(pending);
                 res.put("success", false);
                 res.put("message", "Invalid code");
                 return ResponseEntity.badRequest().body(res);
             }
 
-            // Mark verification as consumed first
-            ev.setConsumed(true);
-            emailVerificationRepository.save(ev);
-
-            // Find and process pending registration
-            Optional<PendingRegistration> pendingOpt = pendingRegistrationRepository.findByEmail(email);
-            if (pendingOpt.isPresent()) {
-                PendingRegistration p = pendingOpt.get();
-                if (!p.isConsumed() && p.getCodeHash() != null && p.getCodeHash().equals(ev.getCodeHash())) {
-                    // Create user account
-                    User newUser = new User(p.getUsername(), p.getEmail(), p.getPasswordHash());
-                    User savedUser = userRepository.save(newUser);
-                    
-                    // Mark pending as consumed
-                    p.setConsumed(true);
-                    pendingRegistrationRepository.save(p);
-                    
-                    // Prepare response data
-                    Map<String, Object> userData = Map.of(
-                            "id", savedUser.getId(),
-                            "username", savedUser.getUsername(),
-                            "email", savedUser.getEmail(),
-                            "createdAt", savedUser.getCreatedAt()
-                    );
-                    res.put("user", userData);
-                    
-                    // Send success email asynchronously (don't wait for it)
-                    try {
-                        emailService.sendVerificationSuccessEmail(email, savedUser.getUsername());
-                        System.out.println("Success email sent to: " + email);
-                    } catch (Exception emailError) {
-                        System.out.println("Failed to send success email: " + emailError.getMessage());
-                        // Don't fail verification if success email fails
-                    }
-                }
+            // Create user account
+            User newUser = new User(pending.getUsername(), pending.getEmail(), pending.getPasswordHash());
+            User savedUser = userRepository.save(newUser);
+            
+            // Mark pending as consumed and delete it
+            pending.markAsConsumed();
+            pendingRegistrationRepository.save(pending);
+            pendingRegistrationRepository.delete(pending); // Remove from database
+            
+            // Prepare response data
+            Map<String, Object> userData = Map.of(
+                    "id", savedUser.getId(),
+                    "username", savedUser.getUsername(),
+                    "email", savedUser.getEmail(),
+                    "createdAt", savedUser.getCreatedAt()
+            );
+            res.put("user", userData);
+            
+            // Send success email asynchronously (don't wait for it)
+            try {
+                emailService.sendVerificationSuccessEmail(email, savedUser.getUsername());
+                System.out.println("Success email sent to: " + email);
+            } catch (Exception emailError) {
+                System.out.println("Failed to send success email: " + emailError.getMessage());
+                // Don't fail verification if success email fails
             }
 
             res.put("success", true);

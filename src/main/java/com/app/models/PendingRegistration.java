@@ -71,6 +71,23 @@ public class PendingRegistration {
 
     public java.time.LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(java.time.LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    // Utility methods
+    public boolean isExpired() {
+        return java.time.LocalDateTime.now().isAfter(expiresAt);
+    }
+
+    public boolean canAttemptVerification() {
+        return !consumed && !isExpired() && attempts < 3;
+    }
+
+    public void incrementAttempts() {
+        this.attempts++;
+    }
+
+    public void markAsConsumed() {
+        this.consumed = true;
+    }
 }
 
 
