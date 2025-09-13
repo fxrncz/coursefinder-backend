@@ -38,26 +38,33 @@ public class PasswordResetController {
             String token = request.get("token").toString();
 
             // First verify the reset token
-            Optional<PasswordReset> prOpt = passwordResetRepository.findTopByEmailOrderByCreatedAtDesc(email);
+            Optional<PasswordReset> prOpt = passwordResetRepository.findActiveByEmail(email, LocalDateTime.now());
             if (prOpt.isEmpty()) {
                 res.put("success", false);
-                res.put("message", "No reset request found");
+                res.put("message", "No valid reset request found");
                 return ResponseEntity.badRequest().body(res);
             }
 
             PasswordReset pr = prOpt.get();
-            if (pr.isConsumed()) {
-                res.put("success", false);
-                res.put("message", "Reset link already used");
+            
+            // Check if reset can be attempted
+            if (!pr.canAttemptReset()) {
+                if (pr.isConsumed()) {
+                    res.put("success", false);
+                    res.put("message", "Reset link already used");
+                } else if (pr.isExpired()) {
+                    res.put("success", false);
+                    res.put("message", "Reset link expired");
+                } else {
+                    res.put("success", false);
+                    res.put("message", "Too many failed attempts");
+                }
                 return ResponseEntity.badRequest().body(res);
             }
-            if (LocalDateTime.now().isAfter(pr.getExpiresAt())) {
-                res.put("success", false);
-                res.put("message", "Reset link expired");
-                return ResponseEntity.badRequest().body(res);
-            }
+            
+            // Verify the token
             if (!sha256(token).equals(pr.getCodeHash())) {
-                pr.setAttempts(pr.getAttempts() + 1);
+                pr.incrementAttempts();
                 passwordResetRepository.save(pr);
                 res.put("success", false);
                 res.put("message", "Invalid reset link");
@@ -97,9 +104,10 @@ public class PasswordResetController {
             user.setPassword(hashed);
             userRepository.save(user);
             
-            // Mark the reset token as consumed
-            pr.setConsumed(true);
+            // Mark the reset token as consumed and delete it
+            pr.markAsConsumed();
             passwordResetRepository.save(pr);
+            passwordResetRepository.delete(pr); // Remove consumed reset from database
 
             res.put("success", true);
             res.put("message", "Password updated successfully");

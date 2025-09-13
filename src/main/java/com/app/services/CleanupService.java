@@ -1,6 +1,7 @@
 package com.app.services;
 
 import com.app.repositories.PendingRegistrationRepository;
+import com.app.repositories.PasswordResetRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,9 @@ public class CleanupService {
 
     @Autowired
     private PendingRegistrationRepository pendingRegistrationRepository;
+
+    @Autowired
+    private PasswordResetRepository passwordResetRepository;
 
     // Run cleanup every 5 minutes
     @Scheduled(fixedRate = 300000) // 5 minutes in milliseconds
@@ -37,9 +41,31 @@ public class CleanupService {
         }
     }
 
+    // Run cleanup every 5 minutes for password resets
+    @Scheduled(fixedRate = 300000) // 5 minutes in milliseconds
+    @Transactional
+    public void cleanupExpiredPasswordResets() {
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            
+            // Delete expired password resets
+            int expiredCount = passwordResetRepository.deleteExpiredPasswordResets(now);
+            
+            // Delete consumed password resets
+            int consumedCount = passwordResetRepository.deleteConsumedPasswordResets();
+            
+            if (expiredCount > 0 || consumedCount > 0) {
+                System.out.println("Password reset cleanup completed: " + expiredCount + " expired, " + consumedCount + " consumed resets removed");
+            }
+        } catch (Exception e) {
+            System.err.println("Error during password reset cleanup: " + e.getMessage());
+        }
+    }
+
     // Manual cleanup method that can be called on demand
     @Transactional
     public void manualCleanup() {
         cleanupExpiredRegistrations();
+        cleanupExpiredPasswordResets();
     }
 }

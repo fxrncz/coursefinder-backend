@@ -82,7 +82,26 @@ public class VerificationController {
                     res.put("message", "If the email exists, a reset link was sent");
                     return ResponseEntity.ok(res);
                 }
-                PasswordReset pr = new PasswordReset(userId, email, codeHash, expiresAt);
+                
+                // Clean up expired password resets first
+                passwordResetRepository.deleteExpiredPasswordResets(LocalDateTime.now());
+                
+                // Check for existing active password reset
+                Optional<PasswordReset> existingReset = passwordResetRepository.findActiveByEmail(email, LocalDateTime.now());
+                
+                PasswordReset pr;
+                if (existingReset.isPresent()) {
+                    // Update existing password reset with new code
+                    pr = existingReset.get();
+                    pr.setCodeHash(codeHash);
+                    pr.setExpiresAt(expiresAt);
+                    pr.setAttempts(0); // Reset attempts for new code
+                    System.out.println("🔄 Updated existing password reset with new code for: " + email);
+                } else {
+                    // Create new password reset
+                    pr = new PasswordReset(userId, email, codeHash, expiresAt);
+                    System.out.println("🆕 Created new password reset for: " + email);
+                }
                 passwordResetRepository.save(pr);
                 
                 // Generate reset link
