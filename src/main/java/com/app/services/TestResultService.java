@@ -5,6 +5,7 @@ import com.app.dto.EnhancedTestResultDTO;
 import com.app.models.TestResult;
 import com.app.models.MbtiRiasecMapping;
 import com.app.models.MbtiDetails;
+import com.app.models.PersonalityTestScores;
 import com.app.repositories.TestResultRepository;
 import com.app.repositories.MbtiRiasecMappingRepository;
 import com.app.repositories.MbtiDetailsRepository;
@@ -41,7 +42,8 @@ public class TestResultService {
     private com.app.repositories.CareerDescriptionRepository careerDescriptionRepository;
 
     @Autowired
-    private HybridRecommendationService hybridRecommendationService;
+    private EnhancedScoringService enhancedScoringService;
+
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     
@@ -71,76 +73,160 @@ public class TestResultService {
      * Process test submission for both users and guests
      */
     private TestResultDTO processTestSubmission(PersonalityTestSubmissionDTO submission, Long userId, UUID guestToken) {
-        // Calculate personality scores
-        Map<Integer, Integer> answers = submission.getAnswers();
+        logger.info("Processing test submission for userId: {}, guestToken: {}", userId, guestToken);
         
-        // Calculate RIASEC scores
-        Map<String, Integer> riasecScores = calculateRIASECScores(answers);
-        String riasecTopTwo = getRIASECTopTwo(riasecScores);
-        
-        // Calculate MBTI scores
-        Map<String, Integer> mbtiScores = calculateMBTIScores(answers);
-        String mbtiType = getMBTIType(mbtiScores);
-        
-        // Try hybrid engine first (new normalized tables)
-        List<String> topCourses = Collections.emptyList();
-        List<String> topCareers = Collections.emptyList();
+        // Check database health before processing
         try {
-            topCourses = hybridRecommendationService.getTopCourseNames(mbtiType, riasecTopTwo, 10);
-            topCareers = hybridRecommendationService.getTopCareerNames(mbtiType, riasecTopTwo, 10);
-        } catch (Exception e) {
-            // Fallback will handle if hybrid not available yet
-        }
-
-        // Legacy fallback (existing 480-table) if hybrid has no data yet
-        List<MbtiRiasecMapping> courseRecommendations = Collections.emptyList();
-        String coursePath;
-        String careerSuggestions;
-        if (topCourses != null && !topCourses.isEmpty()) {
-            coursePath = buildCoursePathFromNames(topCourses, mbtiType, riasecTopTwo);
-        } else {
-            courseRecommendations = getCourseRecommendations(mbtiType, riasecTopTwo);
-            coursePath = generateCoursePathWithDescriptions(courseRecommendations);
-        }
-
-        if (topCareers != null && !topCareers.isEmpty()) {
-            careerSuggestions = buildCareerSuggestionsFromNames(topCareers);
-        } else {
-            if (courseRecommendations.isEmpty()) {
-                courseRecommendations = getCourseRecommendations(mbtiType, riasecTopTwo);
+            long mappingCount = mappingRepository.countTotalMappings();
+            logger.debug("Database health check - MbtiRiasecMapping count: {}", mappingCount);
+            
+            if (mappingCount == 0) {
+                logger.warn("No MBTI mappings found in database. Recommendations may be limited.");
             }
-            careerSuggestions = generateCareerSuggestions(courseRecommendations);
+            
+            // Check description tables
+            long courseDescCount = courseDescriptionRepository.count();
+            long careerDescCount = careerDescriptionRepository.count();
+            logger.debug("Database health check - CourseDescription count: {}, CareerDescription count: {}", courseDescCount, careerDescCount);
+            
+            if (courseDescCount == 0) {
+                logger.warn("No course descriptions found in database. Course descriptions will be generated dynamically.");
+            }
+            if (careerDescCount == 0) {
+                logger.warn("No career descriptions found in database. Career descriptions will be limited.");
+            }
+        } catch (Exception e) {
+            logger.warn("Database health check failed: {}", e.getMessage());
         }
-        String learningStyle = generateLearningStyle(courseRecommendations, mbtiType);
-        String studyTips = generateStudyTips(courseRecommendations, mbtiType);
-        String personalityGrowthTips = generatePersonalityGrowthTips(courseRecommendations, mbtiType);
-        String studentGoals = generateStudentGoals(submission.getGoalSettings());
         
-        // Create and save test result
-        TestResult testResult = new TestResult();
-        testResult.setUserId(userId);
-        testResult.setGuestToken(guestToken);
-        testResult.setMbtiType(mbtiType);
-        testResult.setRiasecCode(riasecTopTwo);
-        testResult.setCoursePath(coursePath);
-        testResult.setCareerSuggestions(careerSuggestions);
-        testResult.setLearningStyle(learningStyle);
-        testResult.setStudyTips(studyTips);
-        testResult.setPersonalityGrowthTips(personalityGrowthTips);
-        testResult.setStudentGoals(studentGoals);
-        
-        TestResult savedResult = testResultRepository.save(testResult);
-        
-        // Convert to DTO and return
-        return convertToDTO(savedResult, courseRecommendations, riasecScores, mbtiScores);
+        try {
+            // Calculate personality scores
+            Map<Integer, Integer> answers = submission.getAnswers();
+            logger.debug("Processing {} answers", answers.size());
+            
+            // Calculate enhanced RIASEC scores with percentages
+            Map<String, com.app.dto.DetailedScoringDTO.ScoreData> enhancedRiasecScores = enhancedScoringService.calculateEnhancedRIASECScores(answers);
+            String riasecTopTwo = enhancedScoringService.determineFinalRIASECCode(enhancedRiasecScores);
+            logger.debug("Enhanced RIASEC scores calculated, top two: {}", riasecTopTwo);
+            
+            // Calculate enhanced MBTI scores with percentages
+            Map<String, com.app.dto.DetailedScoringDTO.ScoreData> enhancedMbtiScores = enhancedScoringService.calculateEnhancedMBTIScores(answers);
+            String mbtiType = enhancedScoringService.determineFinalMBTIType(enhancedMbtiScores);
+            logger.debug("Enhanced MBTI scores calculated, type: {}", mbtiType);
+            
+            // Use legacy mbti_riasec_mappings table for recommendations
+            logger.debug("Using legacy mbti_riasec_mappings for recommendations");
+
+            // Get recommendations from mbti_riasec_mappings table
+            List<MbtiRiasecMapping> courseRecommendations = Collections.emptyList();
+            String coursePath;
+            String careerSuggestions;
+            
+            try {
+                    courseRecommendations = getCourseRecommendations(mbtiType, riasecTopTwo);
+                coursePath = generateCoursePathWithDescriptions(courseRecommendations);
+                careerSuggestions = generateCareerSuggestions(courseRecommendations);
+                
+                logger.debug("Generating additional recommendations");
+                String learningStyle = generateLearningStyle(courseRecommendations, mbtiType);
+                String studyTips = generateStudyTips(courseRecommendations, mbtiType);
+                String personalityGrowthTips = generatePersonalityGrowthTips(courseRecommendations, mbtiType);
+                String studentGoals = generateStudentGoals(submission.getGoalSettings());
+                
+                // Create and save test result
+                logger.debug("Creating test result entity");
+                TestResult testResult = new TestResult();
+                testResult.setUserId(userId);
+                testResult.setGuestToken(guestToken);
+                // sessionId is automatically set in constructor and @PrePersist
+                testResult.setMbtiType(mbtiType);
+                testResult.setRiasecCode(riasecTopTwo);
+                testResult.setCoursePath(coursePath);
+                testResult.setCareerSuggestions(careerSuggestions);
+                testResult.setLearningStyle(learningStyle);
+                testResult.setStudyTips(studyTips);
+                testResult.setPersonalityGrowthTips(personalityGrowthTips);
+                testResult.setStudentGoals(studentGoals);
+                
+                // Set new demographic fields
+                if (submission.getGoalSettings() != null) {
+                    testResult.setAge(submission.getGoalSettings().getAge());
+                    testResult.setGender(submission.getGoalSettings().getGender());
+                    testResult.setIsFromPLMar(submission.getGoalSettings().getIsFromPLMar());
+                    logger.debug("Set demographic info - Age: {}, Gender: {}, IsFromPLMar: {}", 
+                        submission.getGoalSettings().getAge(), 
+                        submission.getGoalSettings().getGender(), 
+                        submission.getGoalSettings().getIsFromPLMar());
+                } else {
+                    logger.warn("Goal settings is null, setting demographic fields to null");
+                    testResult.setAge(null);
+                    testResult.setGender(null);
+                    testResult.setIsFromPLMar(null);
+                }
+                
+                logger.debug("Saving test result to database");
+                logger.debug("TestResult before save - Age: {}, Gender: {}, IsFromPLMar: {}", 
+                    testResult.getAge(), testResult.getGender(), testResult.getIsFromPLMar());
+                TestResult savedResult = testResultRepository.save(testResult);
+                logger.info("Successfully saved test result with ID: {}", savedResult.getId());
+                
+                // Save detailed scoring data for visualization
+                try {
+                    logger.info("Attempting to save detailed scoring data for testResultId: {}, sessionId: {}", 
+                        savedResult.getId(), savedResult.getSessionId());
+                    logger.info("Enhanced RIASEC scores: {}", enhancedRiasecScores.keySet());
+                    logger.info("Enhanced MBTI scores: {}", enhancedMbtiScores.keySet());
+                    
+                    PersonalityTestScores savedScores = enhancedScoringService.saveDetailedScores(
+                        savedResult.getId(), 
+                        savedResult.getSessionId(),
+                        enhancedRiasecScores,
+                        enhancedMbtiScores,
+                        riasecTopTwo,
+                        mbtiType
+                    );
+                    logger.info("Successfully saved detailed scoring data with ID: {}", savedScores.getId());
+                } catch (Exception e) {
+                    logger.error("Failed to save detailed scoring data for test result ID {}: {}", savedResult.getId(), e.getMessage(), e);
+                    // Don't fail the entire process if scoring data save fails
+                }
+                
+                // Convert to DTO and return (using legacy format for compatibility)
+                Map<String, Integer> legacyRiasecScores = new HashMap<>();
+                Map<String, Integer> legacyMbtiScores = new HashMap<>();
+                
+                // Convert enhanced scores to legacy format for DTO
+                for (Map.Entry<String, com.app.dto.DetailedScoringDTO.ScoreData> entry : enhancedRiasecScores.entrySet()) {
+                    legacyRiasecScores.put(entry.getKey(), entry.getValue().getRaw());
+                }
+                for (Map.Entry<String, com.app.dto.DetailedScoringDTO.ScoreData> entry : enhancedMbtiScores.entrySet()) {
+                    legacyMbtiScores.put(entry.getKey(), entry.getValue().getRaw());
+                }
+                
+                return convertToDTO(savedResult, courseRecommendations, legacyRiasecScores, legacyMbtiScores);
+                
+            } catch (Exception e) {
+                logger.error("Error processing test submission for userId: {}, guestToken: {}", userId, guestToken, e);
+                throw new RuntimeException("Failed to process test submission: " + e.getMessage(), e);
+            }
+        } catch (Exception e) {
+            logger.error("Critical error in test submission processing for userId: {}, guestToken: {}", userId, guestToken, e);
+            throw new RuntimeException("Failed to process test submission: " + e.getMessage(), e);
+        }
     }
     
     /**
      * Get test result for user
      */
     public Optional<TestResultDTO> getLatestResultForUser(Long userId) {
+        try {
         Optional<TestResult> result = testResultRepository.findTopByUserIdOrderByGeneratedAtDesc(userId);
         return result.map(this::convertToDTO);
+        } catch (Exception e) {
+            logger.warn("Error getting latest result for user {}: {}", userId, e.getMessage());
+            logger.debug("Latest result error details: ", e);
+            return Optional.empty();
+        }
     }
 
     /**
@@ -164,21 +250,34 @@ public class TestResultService {
      * Get test result for guest
      */
     public Optional<TestResultDTO> getLatestResultForGuest(UUID guestToken) {
+        try {
         Optional<TestResult> result = testResultRepository.findTopByGuestTokenOrderByGeneratedAtDesc(guestToken);
         return result.map(this::convertToDTO);
+        } catch (Exception e) {
+            logger.warn("Error getting latest result for guest {}: {}", guestToken, e.getMessage());
+            logger.debug("Latest guest result error details: ", e);
+            return Optional.empty();
+        }
     }
     
     /**
      * Get detailed MBTI information by type
      */
     public Optional<MbtiDetails> getDetailedMbtiInformation(String mbtiType) {
+        try {
         return mbtiDetailsRepository.findByMbtiType(mbtiType);
+        } catch (Exception e) {
+            logger.warn("Error getting MBTI details for type {}: {}", mbtiType, e.getMessage());
+            logger.debug("MBTI details error details: ", e);
+            return Optional.empty();
+        }
     }
     
     /**
      * Get enhanced test result with detailed MBTI information
      */
     public Optional<EnhancedTestResultDTO> getEnhancedResultForUser(Long userId) {
+        try {
         Optional<TestResult> result = testResultRepository.findTopByUserIdOrderByGeneratedAtDesc(userId);
         if (result.isPresent()) {
             TestResult testResult = result.get();
@@ -186,12 +285,18 @@ public class TestResultService {
             return Optional.of(convertToEnhancedDTO(testResult, mbtiDetails.orElse(null)));
         }
         return Optional.empty();
+        } catch (Exception e) {
+            logger.warn("Error getting enhanced result for user {}: {}", userId, e.getMessage());
+            logger.debug("Enhanced result error details: ", e);
+            return Optional.empty();
+        }
     }
     
     /**
      * Get enhanced test result for guest with detailed MBTI information
      */
     public Optional<EnhancedTestResultDTO> getEnhancedResultForGuest(UUID guestToken) {
+        try {
         Optional<TestResult> result = testResultRepository.findTopByGuestTokenOrderByGeneratedAtDesc(guestToken);
         if (result.isPresent()) {
             TestResult testResult = result.get();
@@ -199,14 +304,25 @@ public class TestResultService {
             return Optional.of(convertToEnhancedDTO(testResult, mbtiDetails.orElse(null)));
         }
         return Optional.empty();
+        } catch (Exception e) {
+            logger.warn("Error getting enhanced result for guest {}: {}", guestToken, e.getMessage());
+            logger.debug("Enhanced guest result error details: ", e);
+            return Optional.empty();
+        }
     }
     
     /**
      * Get test result by session ID
      */
     public Optional<TestResultDTO> getResultBySessionId(UUID sessionId) {
+        try {
         Optional<TestResult> result = testResultRepository.findBySessionId(sessionId);
         return result.map(this::convertToDTO);
+        } catch (Exception e) {
+            logger.warn("Error getting result by session ID {}: {}", sessionId, e.getMessage());
+            logger.debug("Session ID result error details: ", e);
+            return Optional.empty();
+        }
     }
     
     /**
@@ -223,6 +339,221 @@ public class TestResultService {
     }
 
     /**
+     * Count total test results
+     */
+    public long countTotalResults() {
+        return testResultRepository.count();
+    }
+    
+    /**
+     * Test method to verify description tables are working
+     */
+    public Map<String, Object> testDescriptionTables() {
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            // Test course description lookup
+            Optional<com.app.models.CourseDescription> testCourse = courseDescriptionRepository.findByCourseName("BS Computer Science");
+            result.put("courseDescriptionTest", testCourse.isPresent() ? "SUCCESS" : "FAILED");
+            result.put("courseDescriptionCount", courseDescriptionRepository.count());
+            
+            // Test career description lookup
+            Optional<com.app.models.CareerDescription> testCareer = careerDescriptionRepository.findByCareerName("Software Engineer");
+            result.put("careerDescriptionTest", testCareer.isPresent() ? "SUCCESS" : "FAILED");
+            result.put("careerDescriptionCount", careerDescriptionRepository.count());
+            
+            // Test sample lookup
+            if (testCourse.isPresent()) {
+                result.put("sampleCourseDescription", testCourse.get().getDescription().substring(0, Math.min(100, testCourse.get().getDescription().length())) + "...");
+            }
+            if (testCareer.isPresent()) {
+                result.put("sampleCareerDescription", testCareer.get().getDescription().substring(0, Math.min(100, testCareer.get().getDescription().length())) + "...");
+            }
+            
+            } catch (Exception e) {
+            result.put("error", e.getMessage());
+            logger.error("Error testing description tables: {}", e.getMessage(), e);
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Get detailed scoring data for visualization
+     */
+    public com.app.dto.DetailedScoringDTO getDetailedScoringData(String sessionId) {
+        try {
+            UUID sessionUUID = UUID.fromString(sessionId);
+            return enhancedScoringService.getDetailedScoringData(sessionUUID);
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid session ID format: {}", sessionId);
+            return null;
+        } catch (Exception e) {
+            logger.error("Error getting detailed scoring data for session {}: {}", sessionId, e.getMessage(), e);
+            return null;
+        }
+    }
+    
+    /**
+     * Get detailed scoring data by test result ID
+     */
+    public com.app.dto.DetailedScoringDTO getDetailedScoringDataByTestResultId(Long testResultId) {
+        try {
+            return enhancedScoringService.getDetailedScoringDataByTestResultId(testResultId);
+        } catch (Exception e) {
+            logger.error("Error getting detailed scoring data for test result ID {}: {}", testResultId, e.getMessage(), e);
+            return null;
+        }
+    }
+    
+    /**
+     * Regenerate detailed scoring data for existing test results
+     */
+    public boolean regenerateDetailedScoringData(String sessionId) {
+        try {
+            UUID sessionUUID = UUID.fromString(sessionId);
+            Optional<TestResult> testResultOpt = testResultRepository.findBySessionId(sessionUUID);
+            
+            if (testResultOpt.isEmpty()) {
+                logger.warn("No test result found for session: {}", sessionId);
+                return false;
+            }
+            
+            TestResult testResult = testResultOpt.get();
+            
+            // Check if detailed scoring already exists
+            if (enhancedScoringService.getDetailedScoringData(sessionUUID) != null) {
+                logger.info("Detailed scoring data already exists for session: {}", sessionId);
+                return true;
+            }
+            
+            // Get the original answers from the test result
+            // Note: We need to reconstruct the answers from the stored data
+            // For now, we'll create a simple fallback based on the final results
+            Map<Integer, Integer> reconstructedAnswers = reconstructAnswersFromResult(testResult);
+            
+            // Calculate enhanced scores
+            Map<String, com.app.dto.DetailedScoringDTO.ScoreData> enhancedRiasecScores = 
+                enhancedScoringService.calculateEnhancedRIASECScores(reconstructedAnswers);
+            Map<String, com.app.dto.DetailedScoringDTO.ScoreData> enhancedMbtiScores = 
+                enhancedScoringService.calculateEnhancedMBTIScores(reconstructedAnswers);
+            
+            String riasecTopTwo = enhancedScoringService.determineFinalRIASECCode(enhancedRiasecScores);
+            String mbtiType = enhancedScoringService.determineFinalMBTIType(enhancedMbtiScores);
+            
+            // Save detailed scoring data
+            enhancedScoringService.saveDetailedScores(
+                testResult.getId(),
+                testResult.getSessionId(),
+                enhancedRiasecScores,
+                enhancedMbtiScores,
+                riasecTopTwo,
+                mbtiType
+            );
+            
+            logger.info("Successfully regenerated detailed scoring data for session: {}", sessionId);
+            return true;
+            
+        } catch (Exception e) {
+            logger.error("Error regenerating detailed scoring data for session {}: {}", sessionId, e.getMessage(), e);
+            return false;
+        }
+    }
+    
+    /**
+     * Reconstruct answers from test result (fallback method)
+     * This is a simplified reconstruction - in a real scenario, you'd want to store the original answers
+     */
+    private Map<Integer, Integer> reconstructAnswersFromResult(TestResult testResult) {
+        Map<Integer, Integer> answers = new HashMap<>();
+        
+        // This is a simplified reconstruction based on the final MBTI and RIASEC results
+        // In a real implementation, you'd want to store the original answers
+        
+        // For RIASEC, we'll create answers that would result in the final RIASEC code
+        String riasecCode = testResult.getRiasecCode();
+        if (riasecCode.length() >= 2) {
+            // Create varied scores for the top 2 RIASEC dimensions (higher scores)
+            for (int i = 0; i < 2; i++) {
+                char dimension = riasecCode.charAt(i);
+                int startQuestion = getRIASECStartQuestion(dimension);
+                // Create varied scores between 3-5 for preferred dimensions
+                for (int q = startQuestion; q < startQuestion + 10; q++) {
+                    int baseScore = 3 + (q % 3); // 3, 4, or 5
+                    answers.put(q, baseScore);
+                }
+            }
+            
+            // Create varied lower scores for other dimensions
+            String allDimensions = "RIASEC";
+            for (char dim : allDimensions.toCharArray()) {
+                if (!riasecCode.contains(String.valueOf(dim))) {
+                    int startQuestion = getRIASECStartQuestion(dim);
+                    // Create varied scores between 1-3 for non-preferred dimensions
+                    for (int q = startQuestion; q < startQuestion + 10; q++) {
+                        int baseScore = 1 + (q % 3); // 1, 2, or 3
+                        answers.put(q, baseScore);
+                    }
+                }
+            }
+        }
+        
+        // For MBTI, we'll create answers that would result in the final MBTI type
+        String mbtiType = testResult.getMbtiType();
+        if (mbtiType.length() == 4) {
+            // E/I dimension - create varied scores
+            if (mbtiType.charAt(0) == 'E') {
+                for (int q = 60; q < 65; q++) answers.put(q, 3 + (q % 3)); // E questions: 3, 4, or 5
+                for (int q = 65; q < 70; q++) answers.put(q, 1 + (q % 3)); // I questions: 1, 2, or 3
+            } else {
+                for (int q = 60; q < 65; q++) answers.put(q, 1 + (q % 3)); // E questions: 1, 2, or 3
+                for (int q = 65; q < 70; q++) answers.put(q, 3 + (q % 3)); // I questions: 3, 4, or 5
+            }
+            
+            // S/N dimension - create varied scores
+            if (mbtiType.charAt(1) == 'S') {
+                for (int q = 70; q < 75; q++) answers.put(q, 3 + (q % 3)); // S questions: 3, 4, or 5
+                for (int q = 75; q < 80; q++) answers.put(q, 1 + (q % 3)); // N questions: 1, 2, or 3
+            } else {
+                for (int q = 70; q < 75; q++) answers.put(q, 1 + (q % 3)); // S questions: 1, 2, or 3
+                for (int q = 75; q < 80; q++) answers.put(q, 3 + (q % 3)); // N questions: 3, 4, or 5
+            }
+            
+            // T/F dimension - create varied scores
+            if (mbtiType.charAt(2) == 'T') {
+                for (int q = 80; q < 85; q++) answers.put(q, 3 + (q % 3)); // T questions: 3, 4, or 5
+                for (int q = 85; q < 90; q++) answers.put(q, 1 + (q % 3)); // F questions: 1, 2, or 3
+            } else {
+                for (int q = 80; q < 85; q++) answers.put(q, 1 + (q % 3)); // T questions: 1, 2, or 3
+                for (int q = 85; q < 90; q++) answers.put(q, 3 + (q % 3)); // F questions: 3, 4, or 5
+            }
+            
+            // J/P dimension - create varied scores
+            if (mbtiType.charAt(3) == 'J') {
+                for (int q = 90; q < 95; q++) answers.put(q, 3 + (q % 3)); // J questions: 3, 4, or 5
+                for (int q = 95; q < 100; q++) answers.put(q, 1 + (q % 3)); // P questions: 1, 2, or 3
+            } else {
+                for (int q = 90; q < 95; q++) answers.put(q, 1 + (q % 3)); // J questions: 1, 2, or 3
+                for (int q = 95; q < 100; q++) answers.put(q, 3 + (q % 3)); // P questions: 3, 4, or 5
+            }
+        }
+        
+        return answers;
+    }
+    
+    private int getRIASECStartQuestion(char dimension) {
+        switch (dimension) {
+            case 'R': return 0;
+            case 'I': return 10;
+            case 'A': return 20;
+            case 'S': return 30;
+            case 'E': return 40;
+            case 'C': return 50;
+            default: return 0;
+        }
+    }
+    
+    /**
      * Regenerate course descriptions for existing test results
      */
     public boolean regenerateCourseDescriptions(UUID sessionId) {
@@ -230,33 +561,11 @@ public class TestResultService {
         if (result.isPresent()) {
             TestResult testResult = result.get();
             
-            // Prefer hybrid engine; fallback to legacy mappings
-            List<String> topCourses = Collections.emptyList();
-            List<String> topCareers = Collections.emptyList();
-            try {
-                topCourses = hybridRecommendationService.getTopCourseNames(testResult.getMbtiType(), testResult.getRiasecCode(), 10);
-                topCareers = hybridRecommendationService.getTopCareerNames(testResult.getMbtiType(), testResult.getRiasecCode(), 10);
-            } catch (Exception e) {
-                // ignore
-            }
-
-            String newCoursePath;
-            String newCareerSuggestions;
-            if (topCourses != null && !topCourses.isEmpty()) {
-                newCoursePath = buildCoursePathFromNames(topCourses, testResult.getMbtiType(), testResult.getRiasecCode());
-            } else {
-                List<MbtiRiasecMapping> courseRecommendations = getCourseRecommendations(
-                    testResult.getMbtiType(), testResult.getRiasecCode());
-                newCoursePath = generateCoursePathWithDescriptions(courseRecommendations);
-            }
-
-            if (topCareers != null && !topCareers.isEmpty()) {
-                newCareerSuggestions = buildCareerSuggestionsFromNames(topCareers);
-            } else {
-                List<MbtiRiasecMapping> courseRecommendations = getCourseRecommendations(
-                    testResult.getMbtiType(), testResult.getRiasecCode());
-                newCareerSuggestions = generateCareerSuggestions(courseRecommendations);
-            }
+            // Use legacy mbti_riasec_mappings for recommendations
+            List<MbtiRiasecMapping> courseRecommendations = getCourseRecommendations(
+                testResult.getMbtiType(), testResult.getRiasecCode());
+            String newCoursePath = generateCoursePathWithDescriptions(courseRecommendations);
+            String newCareerSuggestions = generateCareerSuggestions(courseRecommendations);
             
             // Update the test result
             testResult.setCoursePath(newCoursePath);
@@ -268,46 +577,6 @@ public class TestResultService {
         return false;
     }
 
-    // Build course path string from ranked course names using dynamic descriptions
-    private String buildCoursePathFromNames(List<String> courseNames, String mbtiType, String riasecCode) {
-        if (courseNames == null || courseNames.isEmpty()) {
-            return generateDefaultCoursePath(mbtiType, riasecCode);
-        }
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < courseNames.size(); i++) {
-            String course = Optional.ofNullable(courseNames.get(i)).orElse("").trim();
-            if (course.isEmpty()) continue;
-            String description = generateCourseDescription(course, mbtiType, riasecCode);
-            sb.append(course).append(": ").append(description);
-            if (i < courseNames.size() - 1) {
-                sb.append("; ");
-            }
-        }
-        return sb.length() > 0 ? sb.toString() : generateDefaultCoursePath(mbtiType, riasecCode);
-    }
-
-    // Build career suggestions string from ranked career names, enriching with descriptions if present
-    private String buildCareerSuggestionsFromNames(List<String> careerNames) {
-        if (careerNames == null || careerNames.isEmpty()) {
-            return "";
-        }
-        List<String> withDescriptions = new ArrayList<>();
-        for (String raw : careerNames) {
-            String name = Optional.ofNullable(raw).orElse("").trim();
-            if (name.isEmpty()) continue;
-            String desc = careerDescriptionRepository.findByCareerName(name)
-                    .map(com.app.models.CareerDescription::getDescription)
-                    .or(() -> careerDescriptionRepository.findFirstByCareerNameIgnoreCase(name).map(com.app.models.CareerDescription::getDescription))
-                    .or(() -> careerDescriptionRepository.findFirstByCareerNameContainingIgnoreCase(name).map(com.app.models.CareerDescription::getDescription))
-                    .orElse("");
-            if (!desc.isEmpty()) {
-                withDescriptions.add(name + ": " + desc);
-            } else {
-                withDescriptions.add(name);
-            }
-        }
-        return String.join("; ", withDescriptions);
-    }
     
     // Helper methods for calculations (reusing logic from PersonalityTestScoringService)
     private Map<String, Integer> calculateRIASECScores(Map<Integer, Integer> answers) {
@@ -359,39 +628,44 @@ public class TestResultService {
     }
     
     private List<MbtiRiasecMapping> getCourseRecommendations(String mbtiType, String riasecCode) {
-        logger.info("Getting course recommendations for MBTI: {} and RIASEC: {}", mbtiType, riasecCode);
+        logger.debug("Getting course recommendations for MBTI: {} and RIASEC: {}", mbtiType, riasecCode);
 
+        try {
         // First try to find exact matches with both MBTI and RIASEC
         List<MbtiRiasecMapping> exactMatches = mappingRepository.findByMbtiTypeAndRiasecCode(mbtiType, riasecCode);
-        logger.info("Found {} exact matches for MBTI {} and RIASEC {}", exactMatches.size(), mbtiType, riasecCode);
-
         if (!exactMatches.isEmpty()) {
+            logger.debug("Found {} exact matches", exactMatches.size());
             return exactMatches;
         }
 
-        // If no exact matches, try MBTI only
+        // If no exact matches, try MBTI only (limit for performance)
         List<MbtiRiasecMapping> mbtiMatches = mappingRepository.findByMbtiType(mbtiType);
-        logger.info("Found {} MBTI-only matches for {}", mbtiMatches.size(), mbtiType);
-
         if (!mbtiMatches.isEmpty()) {
-            return mbtiMatches;
+            logger.debug("Found {} MBTI-only matches", mbtiMatches.size());
+            // Limit to first 10 results for performance
+            return mbtiMatches.stream().limit(10).collect(Collectors.toList());
         }
 
-        // If still no matches, try RIASEC only
+        // If still no matches, try RIASEC only (limit for performance)
         List<MbtiRiasecMapping> riasecMatches = mappingRepository.findByRiasecCode(riasecCode);
-        logger.info("Found {} RIASEC-only matches for {}", riasecMatches.size(), riasecCode);
-
         if (!riasecMatches.isEmpty()) {
-            return riasecMatches;
+            logger.debug("Found {} RIASEC-only matches", riasecMatches.size());
+            // Limit to first 10 results for performance
+            return riasecMatches.stream().limit(10).collect(Collectors.toList());
         }
 
-        // If still no matches, try individual RIASEC codes
+        // Final fallback - try individual RIASEC codes (limit for performance)
         List<String> individualCodes = Arrays.asList(riasecCode.split(""));
-        logger.info("Trying individual RIASEC codes: {}", individualCodes);
         List<MbtiRiasecMapping> individualMatches = mappingRepository.findByRiasecCodesOrderById(individualCodes);
-        logger.info("Found {} matches for individual RIASEC codes", individualMatches.size());
-
-        return individualMatches;
+        logger.debug("Found {} matches for individual RIASEC codes", individualMatches.size());
+        
+        // Limit to first 10 results for performance
+        return individualMatches.stream().limit(10).collect(Collectors.toList());
+        } catch (Exception e) {
+            logger.warn("Error getting course recommendations for MBTI: {} and RIASEC: {}: {}", mbtiType, riasecCode, e.getMessage());
+            logger.debug("Course recommendation error details: ", e);
+            return Collections.emptyList();
+        }
     }
     
     private String generateCoursePath(List<MbtiRiasecMapping> recommendations) {
@@ -413,6 +687,39 @@ public class TestResultService {
         }
 
         return coursePath;
+    }
+
+    /**
+     * Generate simple course path without complex descriptions (for performance)
+     */
+    private String generateSimpleCoursePath(List<MbtiRiasecMapping> recommendations) {
+        if (recommendations == null || recommendations.isEmpty()) {
+            return "No specific course recommendations found. Consider exploring general programs that align with your interests.";
+        }
+
+        MbtiRiasecMapping firstRecommendation = recommendations.get(0);
+        String suggestedCourses = firstRecommendation.getSuggestedCourses();
+        
+        if (suggestedCourses == null || suggestedCourses.trim().isEmpty()) {
+            return generateDefaultCoursePath(firstRecommendation.getMbtiType(), firstRecommendation.getRiasecCode());
+        }
+
+        // Return simple course list without complex descriptions
+        return suggestedCourses.replace(",", "; ");
+    }
+
+    /**
+     * Generate simple career suggestions without complex descriptions (for performance)
+     */
+    private String generateSimpleCareerSuggestions(List<MbtiRiasecMapping> recommendations) {
+        if (recommendations == null || recommendations.isEmpty()) {
+            return "Consider exploring careers that align with your personality type and interests.";
+        }
+
+        MbtiRiasecMapping firstRecommendation = recommendations.get(0);
+        // Use a simple career suggestion based on personality type
+        return "Explore careers that match your " + firstRecommendation.getMbtiType() + " personality type and " + 
+               firstRecommendation.getRiasecCode() + " interests.";
     }
 
     /**
@@ -456,11 +763,28 @@ public class TestResultService {
     private String generateCourseDescription(String courseName, String mbtiType, String riasecCode) {
         // Prefer DB-backed description; fall back to legacy generator
         try {
-            return courseDescriptionRepository.findByCourseName(courseName)
-                .map(com.app.models.CourseDescription::getDescription)
-                .orElseGet(() -> generateDynamicCourseDescription(courseName, mbtiType, riasecCode));
+            logger.debug("Looking up course description for: '{}'", courseName);
+            
+            Optional<com.app.models.CourseDescription> courseDesc = courseDescriptionRepository.findByCourseName(courseName);
+            if (courseDesc.isPresent()) {
+                String description = courseDesc.get().getDescription();
+                logger.debug("Found course description for '{}': {}", courseName, description.substring(0, Math.min(100, description.length())) + "...");
+                return description;
+            } else {
+                logger.debug("No course description found for '{}', trying partial match", courseName);
+                // Try partial match
+                Optional<com.app.models.CourseDescription> partialMatch = courseDescriptionRepository.findByCourseNameContainingIgnoreCase(courseName);
+                if (partialMatch.isPresent()) {
+                    String description = partialMatch.get().getDescription();
+                    logger.debug("Found partial match for '{}': {}", courseName, description.substring(0, Math.min(100, description.length())) + "...");
+                    return description;
+                } else {
+                    logger.debug("No course description found for '{}', using dynamic description", courseName);
+                    return generateDynamicCourseDescription(courseName, mbtiType, riasecCode);
+                }
+            }
         } catch (Exception e) {
-            // If repository not available or any error, use dynamic fallback
+            logger.error("Error looking up course description for '{}': {}", courseName, e.getMessage(), e);
             return generateDynamicCourseDescription(courseName, mbtiType, riasecCode);
         }
     }
@@ -677,6 +1001,7 @@ public class TestResultService {
 
     private String generateCareerSuggestions(List<MbtiRiasecMapping> recommendations) {
         if (recommendations == null || recommendations.isEmpty()) {
+            logger.debug("No recommendations provided for career suggestions");
             return "Career options will vary based on your chosen field of study and personal interests.";
         }
 
@@ -684,26 +1009,48 @@ public class TestResultService {
         MbtiRiasecMapping first = recommendations.get(0);
         String raw = Optional.ofNullable(first.getCareerSuggestions()).orElse("").trim();
         if (raw.isEmpty()) {
+            logger.debug("No career suggestions found in mapping, using default");
             return generateDefaultCareerSuggestions(first.getMbtiType(), first.getRiasecCode());
         }
 
+        logger.debug("Processing career suggestions: {}", raw);
         String[] careers = raw.split(",");
         List<String> withDescriptions = new ArrayList<>();
+        
         for (String c : careers) {
             String name = c.trim();
             if (name.isEmpty()) continue;
+            
+            logger.debug("Looking up career description for: '{}'", name);
+            try {
             String desc = careerDescriptionRepository.findByCareerName(name)
                     .map(com.app.models.CareerDescription::getDescription)
-                    .or(() -> careerDescriptionRepository.findFirstByCareerNameIgnoreCase(name).map(com.app.models.CareerDescription::getDescription))
-                    .or(() -> careerDescriptionRepository.findFirstByCareerNameContainingIgnoreCase(name).map(com.app.models.CareerDescription::getDescription))
+                        .or(() -> {
+                            logger.debug("Exact match not found for '{}', trying case-insensitive", name);
+                            return careerDescriptionRepository.findFirstByCareerNameIgnoreCase(name).map(com.app.models.CareerDescription::getDescription);
+                        })
+                        .or(() -> {
+                            logger.debug("Case-insensitive match not found for '{}', trying partial match", name);
+                            return careerDescriptionRepository.findFirstByCareerNameContainingIgnoreCase(name).map(com.app.models.CareerDescription::getDescription);
+                        })
                     .orElse("");
+                
             if (!desc.isEmpty()) {
+                    logger.debug("Found career description for '{}': {}", name, desc.substring(0, Math.min(100, desc.length())) + "...");
                 withDescriptions.add(name + ": " + desc);
             } else {
+                    logger.debug("No career description found for '{}', using name only", name);
+                withDescriptions.add(name);
+            }
+            } catch (Exception e) {
+                logger.error("Error looking up career description for '{}': {}", name, e.getMessage(), e);
                 withDescriptions.add(name);
             }
         }
-        return String.join("; ", withDescriptions);
+        
+        String result = String.join("; ", withDescriptions);
+        logger.debug("Final career suggestions result: {}", result.substring(0, Math.min(200, result.length())) + "...");
+        return result;
     }
     
     private String generateLearningStyle(List<MbtiRiasecMapping> recommendations, String mbtiType) {
@@ -716,9 +1063,13 @@ public class TestResultService {
         }
         
         // If not available from mapping, get from detailed MBTI information
+        try {
         Optional<MbtiDetails> mbtiDetails = mbtiDetailsRepository.findByMbtiType(mbtiType);
         if (mbtiDetails.isPresent()) {
             return mbtiDetails.get().getLearningStyleSummary();
+            }
+        } catch (Exception e) {
+            logger.warn("Error getting MBTI details for learning style (MBTI: {}): {}", mbtiType, e.getMessage());
         }
         
         return "Mixed learning approach";
@@ -734,9 +1085,13 @@ public class TestResultService {
         }
         
         // If not available from mapping, get from detailed MBTI information
+        try {
         Optional<MbtiDetails> mbtiDetails = mbtiDetailsRepository.findByMbtiType(mbtiType);
         if (mbtiDetails.isPresent()) {
             return mbtiDetails.get().getStudyTipsSummary();
+            }
+        } catch (Exception e) {
+            logger.warn("Error getting MBTI details for study tips (MBTI: {}): {}", mbtiType, e.getMessage());
         }
         
         return "Focus on your strengths and preferred learning methods.";
@@ -752,9 +1107,13 @@ public class TestResultService {
         }
         
         // If not available from mapping, get general growth challenges from detailed MBTI information
+        try {
         Optional<MbtiDetails> mbtiDetails = mbtiDetailsRepository.findByMbtiType(mbtiType);
         if (mbtiDetails.isPresent()) {
             return mbtiDetails.get().getGrowthChallenges();
+            }
+        } catch (Exception e) {
+            logger.warn("Error getting MBTI details for personality growth tips (MBTI: {}): {}", mbtiType, e.getMessage());
         }
         
         return "Continue developing your natural strengths while working on areas for improvement.";
@@ -762,17 +1121,31 @@ public class TestResultService {
     
     private String generateStudentGoals(PersonalityTestSubmissionDTO.GoalSettingAnswersDTO goalSettings) {
         if (goalSettings == null) {
+            logger.warn("Goal settings are null, returning empty JSON");
             return "{}";
         }
         
         try {
             Map<String, Object> goals = new HashMap<>();
-            goals.put("priority", goalSettings.getPriority());
-            goals.put("environment", goalSettings.getEnvironment());
-            goals.put("motivation", goalSettings.getMotivation());
-            goals.put("confidence", goalSettings.getConfidence());
-            return objectMapper.writeValueAsString(goals);
+            goals.put("priority", goalSettings.getPriority() != null ? goalSettings.getPriority() : "");
+            goals.put("environment", goalSettings.getEnvironment() != null ? goalSettings.getEnvironment() : "");
+            goals.put("motivation", goalSettings.getMotivation() != null ? goalSettings.getMotivation() : "");
+            goals.put("confidence", goalSettings.getConfidence() != null ? goalSettings.getConfidence() : 0);
+            goals.put("concern", goalSettings.getConcern() != null ? goalSettings.getConcern() : "");
+            goals.put("routine", goalSettings.getRoutine() != null ? goalSettings.getRoutine() : "");
+            goals.put("impact", goalSettings.getImpact() != null ? goalSettings.getImpact() : "");
+            goals.put("age", goalSettings.getAge() != null ? goalSettings.getAge() : null);
+            goals.put("gender", goalSettings.getGender() != null ? goalSettings.getGender() : "");
+            goals.put("isFromPLMar", goalSettings.getIsFromPLMar() != null ? goalSettings.getIsFromPLMar() : null);
+            
+            String result = objectMapper.writeValueAsString(goals);
+            logger.debug("Successfully serialized goal settings: {}", result);
+            return result;
         } catch (JsonProcessingException e) {
+            logger.error("Failed to serialize goal settings to JSON: {}", e.getMessage(), e);
+            return "{}";
+        } catch (Exception e) {
+            logger.error("Unexpected error processing goal settings: {}", e.getMessage(), e);
             return "{}";
         }
     }
@@ -796,6 +1169,9 @@ public class TestResultService {
         dto.setStudyTips(entity.getStudyTips());
         dto.setPersonalityGrowthTips(entity.getPersonalityGrowthTips());
         dto.setStudentGoals(entity.getStudentGoals());
+        dto.setAge(entity.getAge());
+        dto.setGender(entity.getGender());
+        dto.setIsFromPLMar(entity.getIsFromPLMar());
         dto.setGeneratedAt(entity.getGeneratedAt());
         dto.setTakenAt(entity.getTakenAt());
         
@@ -825,6 +1201,9 @@ public class TestResultService {
         dto.setStudyTips(entity.getStudyTips());
         dto.setPersonalityGrowthTips(entity.getPersonalityGrowthTips());
         dto.setStudentGoals(entity.getStudentGoals());
+        dto.setAge(entity.getAge());
+        dto.setGender(entity.getGender());
+        dto.setIsFromPLMar(entity.getIsFromPLMar());
         dto.setGeneratedAt(entity.getGeneratedAt());
         
         // Add detailed MBTI information if available
@@ -919,6 +1298,9 @@ public class TestResultService {
         private String studyTips;
         private String personalityGrowthTips;
         private String studentGoals;
+        private Integer age;
+        private String gender;
+        private Boolean isFromPLMar;
         private java.time.LocalDateTime generatedAt;
         private java.time.LocalDateTime takenAt;
         private List<MbtiRiasecMapping> courseRecommendations;
@@ -960,6 +1342,15 @@ public class TestResultService {
         public String getStudentGoals() { return studentGoals; }
         public void setStudentGoals(String studentGoals) { this.studentGoals = studentGoals; }
         
+        public Integer getAge() { return age; }
+        public void setAge(Integer age) { this.age = age; }
+        
+        public String getGender() { return gender; }
+        public void setGender(String gender) { this.gender = gender; }
+        
+        public Boolean getIsFromPLMar() { return isFromPLMar; }
+        public void setIsFromPLMar(Boolean isFromPLMar) { this.isFromPLMar = isFromPLMar; }
+        
         public java.time.LocalDateTime getGeneratedAt() { return generatedAt; }
         public void setGeneratedAt(java.time.LocalDateTime generatedAt) { this.generatedAt = generatedAt; }
 
@@ -968,5 +1359,26 @@ public class TestResultService {
 
         public List<MbtiRiasecMapping> getCourseRecommendations() { return courseRecommendations; }
         public void setCourseRecommendations(List<MbtiRiasecMapping> courseRecommendations) { this.courseRecommendations = courseRecommendations; }
+    }
+    
+    /**
+     * Get TestResult by session ID
+     * This method retrieves a TestResult by its session ID
+     */
+    public Optional<TestResult> getTestResultBySessionId(String sessionId) {
+        try {
+            UUID uuid = UUID.fromString(sessionId);
+            return testResultRepository.findBySessionId(uuid);
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid session ID format: {}", sessionId);
+            return Optional.empty();
+        }
+    }
+    
+    /**
+     * Get all personality test scores for debugging
+     */
+    public List<com.app.models.PersonalityTestScores> getAllPersonalityTestScores() {
+        return enhancedScoringService.getAllPersonalityTestScores();
     }
 }

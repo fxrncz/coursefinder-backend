@@ -53,6 +53,9 @@ public class PersonalityTestSubmissionDTO {
         private Integer confidence;
         private String routine;
         private String impact;
+        private Integer age;
+        private String gender;
+        private Boolean isFromPLMar;
         
         // Constructors
         public GoalSettingAnswersDTO() {}
@@ -122,6 +125,30 @@ public class PersonalityTestSubmissionDTO {
             this.impact = impact;
         }
         
+        public Integer getAge() {
+            return age;
+        }
+        
+        public void setAge(Integer age) {
+            this.age = age;
+        }
+        
+        public String getGender() {
+            return gender;
+        }
+        
+        public void setGender(String gender) {
+            this.gender = gender;
+        }
+        
+        public Boolean getIsFromPLMar() {
+            return isFromPLMar;
+        }
+        
+        public void setIsFromPLMar(Boolean isFromPLMar) {
+            this.isFromPLMar = isFromPLMar;
+        }
+        
         @Override
         public String toString() {
             return "GoalSettingAnswersDTO{" +
@@ -133,6 +160,9 @@ public class PersonalityTestSubmissionDTO {
                     ", confidence=" + confidence +
                     ", routine='" + routine + '\'' +
                     ", impact='" + impact + '\'' +
+                    ", age=" + age +
+                    ", gender='" + gender + '\'' +
+                    ", isFromPLMar=" + isFromPLMar +
                     '}';
         }
     }

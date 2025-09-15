@@ -65,3 +65,114 @@ CREATE TABLE IF NOT EXISTS mbti_details (
 
 CREATE INDEX IF NOT EXISTS idx_mbti_details_type ON mbti_details(mbti_type);
 
+-- Test results table
+CREATE TABLE IF NOT EXISTS test_results (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT,
+    guest_token UUID,
+    session_id UUID NOT NULL,
+    mbti_type VARCHAR(4),
+    riasec_code VARCHAR(4),
+    course_path TEXT,
+    career_suggestions TEXT,
+    learning_style TEXT,
+    study_tips TEXT,
+    personality_growth_tips TEXT,
+    student_goals TEXT,
+    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    taken_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Add new columns to existing test_results table (safe migration)
+-- These statements are safe to run multiple times
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS age INTEGER;
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS is_from_plmar BOOLEAN;
+
+-- Indexes for test_results table
+CREATE INDEX IF NOT EXISTS idx_test_results_user_id ON test_results(user_id);
+CREATE INDEX IF NOT EXISTS idx_test_results_guest_token ON test_results(guest_token);
+CREATE INDEX IF NOT EXISTS idx_test_results_session_id ON test_results(session_id);
+CREATE INDEX IF NOT EXISTS idx_test_results_mbti_type ON test_results(mbti_type);
+CREATE INDEX IF NOT EXISTS idx_test_results_riasec_code ON test_results(riasec_code);
+CREATE INDEX IF NOT EXISTS idx_test_results_generated_at ON test_results(generated_at);
+CREATE INDEX IF NOT EXISTS idx_test_results_age ON test_results(age);
+CREATE INDEX IF NOT EXISTS idx_test_results_gender ON test_results(gender);
+CREATE INDEX IF NOT EXISTS idx_test_results_is_from_plmar ON test_results(is_from_plmar);
+
+-- MBTI RIASEC Mappings table for course and career recommendations
+CREATE TABLE IF NOT EXISTS mbti_riasec_mappings (
+    id BIGSERIAL PRIMARY KEY,
+    mbti_type VARCHAR(10) NOT NULL,
+    riasec_code VARCHAR(10) NOT NULL,
+    suggested_courses TEXT NOT NULL,
+    career_suggestions TEXT NOT NULL,
+    learning_style TEXT NOT NULL,
+    study_tips TEXT NOT NULL,
+    personality_growth_tips TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_mbti_riasec_mappings_mbti_type ON mbti_riasec_mappings(mbti_type);
+CREATE INDEX IF NOT EXISTS idx_mbti_riasec_mappings_riasec_code ON mbti_riasec_mappings(riasec_code);
+CREATE INDEX IF NOT EXISTS idx_mbti_riasec_mappings_combination ON mbti_riasec_mappings(mbti_type, riasec_code);
+
+-- Note: updated_at column will be manually updated in the application
+
+-- Detailed scoring data table for personality test results
+CREATE TABLE IF NOT EXISTS personality_test_scores (
+    id BIGSERIAL PRIMARY KEY,
+    test_result_id BIGINT NOT NULL,
+    session_id UUID NOT NULL,
+    
+    -- RIASEC Scores (raw and percentage)
+    riasec_r_raw INTEGER NOT NULL,
+    riasec_r_percentage DECIMAL(5,2) NOT NULL,
+    riasec_i_raw INTEGER NOT NULL,
+    riasec_i_percentage DECIMAL(5,2) NOT NULL,
+    riasec_a_raw INTEGER NOT NULL,
+    riasec_a_percentage DECIMAL(5,2) NOT NULL,
+    riasec_s_raw INTEGER NOT NULL,
+    riasec_s_percentage DECIMAL(5,2) NOT NULL,
+    riasec_e_raw INTEGER NOT NULL,
+    riasec_e_percentage DECIMAL(5,2) NOT NULL,
+    riasec_c_raw INTEGER NOT NULL,
+    riasec_c_percentage DECIMAL(5,2) NOT NULL,
+    
+    -- MBTI Scores (raw and percentage)
+    mbti_e_raw INTEGER NOT NULL,
+    mbti_e_percentage DECIMAL(5,2) NOT NULL,
+    mbti_i_raw INTEGER NOT NULL,
+    mbti_i_percentage DECIMAL(5,2) NOT NULL,
+    mbti_s_raw INTEGER NOT NULL,
+    mbti_s_percentage DECIMAL(5,2) NOT NULL,
+    mbti_n_raw INTEGER NOT NULL,
+    mbti_n_percentage DECIMAL(5,2) NOT NULL,
+    mbti_t_raw INTEGER NOT NULL,
+    mbti_t_percentage DECIMAL(5,2) NOT NULL,
+    mbti_f_raw INTEGER NOT NULL,
+    mbti_f_percentage DECIMAL(5,2) NOT NULL,
+    mbti_j_raw INTEGER NOT NULL,
+    mbti_j_percentage DECIMAL(5,2) NOT NULL,
+    mbti_p_raw INTEGER NOT NULL,
+    mbti_p_percentage DECIMAL(5,2) NOT NULL,
+    
+    -- Final Results
+    final_riasec_code VARCHAR(10) NOT NULL,
+    final_mbti_type VARCHAR(4) NOT NULL,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Foreign key constraint
+    CONSTRAINT fk_personality_test_scores_test_result 
+        FOREIGN KEY (test_result_id) REFERENCES test_results(id) ON DELETE CASCADE
+);
+
+-- Indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_personality_test_scores_test_result_id ON personality_test_scores(test_result_id);
+CREATE INDEX IF NOT EXISTS idx_personality_test_scores_session_id ON personality_test_scores(session_id);
+CREATE INDEX IF NOT EXISTS idx_personality_test_scores_final_riasec ON personality_test_scores(final_riasec_code);
+CREATE INDEX IF NOT EXISTS idx_personality_test_scores_final_mbti ON personality_test_scores(final_mbti_type);
+

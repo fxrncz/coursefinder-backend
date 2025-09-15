@@ -2,11 +2,14 @@ package com.app.controllers;
 
 import com.app.dto.PersonalityTestSubmissionDTO;
 import com.app.dto.EnhancedTestResultDTO;
+import com.app.models.TestResult;
 import com.app.services.TestResultService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.List;
@@ -18,7 +21,9 @@ import java.util.UUID;
 @RequestMapping("/api/personality-test")
 @CrossOrigin(origins = "http://localhost:3000")
 public class PersonalityTestController {
-    
+
+    private static final Logger logger = LoggerFactory.getLogger(PersonalityTestController.class);
+
     @Autowired
     private TestResultService testResultService;
     
@@ -36,6 +41,17 @@ public class PersonalityTestController {
                 response.put("status", "ERROR");
                 response.put("message", "All 100 questions must be answered");
                 return ResponseEntity.badRequest().body(response);
+            }
+            
+            // Validate goal settings and PLMar requirement
+            if (submission.getGoalSettings() != null) {
+                // PLMar status is required - check if it's explicitly set to true or false
+                Boolean isFromPLMar = submission.getGoalSettings().getIsFromPLMar();
+                if (isFromPLMar == null) {
+                    response.put("status", "ERROR");
+                    response.put("message", "PLMar status is required. Please answer 'Are you from PLMar or Not?'");
+                    return ResponseEntity.badRequest().body(response);
+                }
             }
 
             UUID guestUUID = null;
@@ -62,6 +78,8 @@ public class PersonalityTestController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
+            System.err.println("Error in guest submission: " + e.getMessage());
+            e.printStackTrace();
             response.put("status", "ERROR");
             response.put("message", "Failed to process personality test: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
@@ -87,6 +105,17 @@ public class PersonalityTestController {
                 response.put("status", "ERROR");
                 response.put("message", "All 100 questions must be answered");
                 return ResponseEntity.badRequest().body(response);
+            }
+            
+            // Validate goal settings and PLMar requirement
+            if (submission.getGoalSettings() != null) {
+                // PLMar status is required - check if it's explicitly set to true or false
+                Boolean isFromPLMar = submission.getGoalSettings().getIsFromPLMar();
+                if (isFromPLMar == null) {
+                    response.put("status", "ERROR");
+                    response.put("message", "PLMar status is required. Please answer 'Are you from PLMar or Not?'");
+                    return ResponseEntity.badRequest().body(response);
+                }
             }
 
             // Submit test for user
@@ -208,14 +237,28 @@ public class PersonalityTestController {
         Map<String, Object> response = new HashMap<>();
 
         try {
+            System.out.println("=== GET ALL RESULTS FOR USER ===");
+            System.out.println("Getting all results for userId: " + userId);
+            
             // Get all results from test_results table
             List<TestResultService.TestResultDTO> results = testResultService.getAllResultsForUser(userId);
+            
+            System.out.println("Found " + results.size() + " results");
+            for (int i = 0; i < results.size(); i++) {
+                TestResultService.TestResultDTO result = results.get(i);
+                System.out.println("Result " + i + ": ID=" + result.getId() + ", MBTI=" + result.getMbtiType() + 
+                    ", Age=" + result.getAge() + ", Gender=" + result.getGender() + ", IsFromPLMar=" + result.getIsFromPLMar());
+            }
 
             response.put("status", "SUCCESS");
             response.put("results", results);
             response.put("count", results.size());
+            
+            System.out.println("Returning response with " + results.size() + " results");
             return ResponseEntity.ok(response);
         } catch (Exception e) {
+            System.err.println("Error retrieving test results for userId " + userId + ": " + e.getMessage());
+            e.printStackTrace();
             response.put("status", "ERROR");
             response.put("message", "Error retrieving test results: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
@@ -230,16 +273,28 @@ public class PersonalityTestController {
         Map<String, Object> response = new HashMap<>();
 
         try {
+            System.out.println("=== CHECK USER TEST STATUS ===");
+            System.out.println("Checking test status for userId: " + userId);
+            
             // Check in the new test_results table
             Optional<TestResultService.TestResultDTO> result = testResultService.getLatestResultForUser(userId);
             boolean hasTaken = result.isPresent();
+            
+            System.out.println("Found result: " + result.isPresent());
+            if (result.isPresent()) {
+                System.out.println("Result ID: " + result.get().getId());
+                System.out.println("Result MBTI: " + result.get().getMbtiType());
+            }
 
             response.put("status", "SUCCESS");
             response.put("hasTakenTest", hasTaken);
 
+            System.out.println("Returning response: " + response);
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
+            System.err.println("Error checking test status for userId " + userId + ": " + e.getMessage());
+            e.printStackTrace();
             response.put("status", "ERROR");
             response.put("message", "Failed to check test status: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
@@ -343,9 +398,13 @@ public class PersonalityTestController {
         Map<String, Object> response = new HashMap<>();
 
         try {
-            // Simple health check using TestResultService
+            // Test database connectivity
+            long resultCount = testResultService.countTotalResults();
+            
             response.put("status", "SUCCESS");
             response.put("message", "Personality test service is running");
+            response.put("database", "Connected");
+            response.put("totalResults", resultCount);
             response.put("timestamp", java.time.LocalDateTime.now());
 
             return ResponseEntity.ok(response);
@@ -353,6 +412,8 @@ public class PersonalityTestController {
         } catch (Exception e) {
             response.put("status", "ERROR");
             response.put("message", "Personality test service health check failed: " + e.getMessage());
+            response.put("database", "Disconnected");
+            response.put("timestamp", java.time.LocalDateTime.now());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
@@ -476,6 +537,368 @@ public class PersonalityTestController {
         } catch (Exception e) {
             response.put("status", "ERROR");
             response.put("message", "Failed to retrieve enhanced test result: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
+     * Test description tables connectivity
+     */
+    @GetMapping("/test-descriptions")
+    public ResponseEntity<Map<String, Object>> testDescriptionTables() {
+        try {
+            Map<String, Object> result = testResultService.testDescriptionTables();
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
+     * Get detailed scoring data for visualization/graphs
+     */
+    @GetMapping("/scoring-data/{sessionId}")
+    public ResponseEntity<Map<String, Object>> getDetailedScoringData(@PathVariable String sessionId) {
+        try {
+            logger.info("Fetching detailed scoring data for session: {}", sessionId);
+            com.app.dto.DetailedScoringDTO scoringData = testResultService.getDetailedScoringData(sessionId);
+            if (scoringData != null) {
+                logger.info("Found detailed scoring data for session: {}", sessionId);
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", true);
+                response.put("data", scoringData);
+                return ResponseEntity.ok(response);
+            } else {
+                logger.warn("No scoring data found for session: {}", sessionId);
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "No scoring data found for session: " + sessionId);
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            logger.error("Error fetching detailed scoring data for session {}: {}", sessionId, e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
+     * Debug endpoint to check if detailed scoring data exists for a session
+     */
+    @GetMapping("/debug-scoring/{sessionId}")
+    public ResponseEntity<Map<String, Object>> debugScoringData(@PathVariable String sessionId) {
+        try {
+            Map<String, Object> debugInfo = new HashMap<>();
+            debugInfo.put("sessionId", sessionId);
+            
+            // Check if test result exists
+            Optional<TestResult> testResult = testResultService.getTestResultBySessionId(sessionId);
+            debugInfo.put("testResultExists", testResult.isPresent());
+            if (testResult.isPresent()) {
+                debugInfo.put("testResultId", testResult.get().getId());
+                debugInfo.put("mbtiType", testResult.get().getMbtiType());
+                debugInfo.put("riasecCode", testResult.get().getRiasecCode());
+            }
+            
+            // Check if detailed scoring exists
+            com.app.dto.DetailedScoringDTO scoringData = testResultService.getDetailedScoringData(sessionId);
+            debugInfo.put("scoringDataExists", scoringData != null);
+            if (scoringData != null) {
+                debugInfo.put("riasecScores", scoringData.getRiasecScores());
+                debugInfo.put("mbtiScores", scoringData.getMbtiScores());
+            }
+            
+            return ResponseEntity.ok(debugInfo);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
+     * Regenerate detailed scoring data for existing test results
+     */
+    @PostMapping("/regenerate-scoring/{sessionId}")
+    public ResponseEntity<Map<String, Object>> regenerateDetailedScoringData(@PathVariable String sessionId) {
+        try {
+            boolean success = testResultService.regenerateDetailedScoringData(sessionId);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", success);
+            if (success) {
+                response.put("message", "Detailed scoring data regenerated successfully");
+            } else {
+                response.put("message", "Failed to regenerate detailed scoring data");
+            }
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
+     * Debug endpoint to check all personality_test_scores data
+     */
+    @GetMapping("/debug-all-scores")
+    public ResponseEntity<Map<String, Object>> debugAllScores() {
+        try {
+            Map<String, Object> response = new HashMap<>();
+            
+            // Get all personality test scores
+            List<com.app.models.PersonalityTestScores> allScores = testResultService.getAllPersonalityTestScores();
+            response.put("totalScores", allScores.size());
+            response.put("scores", allScores.stream().map(score -> {
+                Map<String, Object> scoreData = new HashMap<>();
+                scoreData.put("id", score.getId());
+                scoreData.put("testResultId", score.getTestResultId());
+                scoreData.put("sessionId", score.getSessionId());
+                scoreData.put("riasecRPercentage", score.getRiasecRPercentage());
+                scoreData.put("riasecIPercentage", score.getRiasecIPercentage());
+                scoreData.put("riasecAPercentage", score.getRiasecAPercentage());
+                scoreData.put("riasecSPercentage", score.getRiasecSPercentage());
+                scoreData.put("riasecEPercentage", score.getRiasecEPercentage());
+                scoreData.put("riasecCPercentage", score.getRiasecCPercentage());
+                scoreData.put("mbtiEPercentage", score.getMbtiEPercentage());
+                scoreData.put("mbtiIPercentage", score.getMbtiIPercentage());
+                scoreData.put("mbtiSPercentage", score.getMbtiSPercentage());
+                scoreData.put("mbtiNPercentage", score.getMbtiNPercentage());
+                scoreData.put("mbtiTPercentage", score.getMbtiTPercentage());
+                scoreData.put("mbtiFPercentage", score.getMbtiFPercentage());
+                scoreData.put("mbtiJPercentage", score.getMbtiJPercentage());
+                scoreData.put("mbtiPPercentage", score.getMbtiPPercentage());
+                scoreData.put("finalRiasecCode", score.getFinalRiasecCode());
+                scoreData.put("finalMbtiType", score.getFinalMbtiType());
+                scoreData.put("createdAt", score.getCreatedAt());
+                return scoreData;
+            }).collect(java.util.stream.Collectors.toList()));
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
+     * Test endpoint to verify data flow
+     */
+    @GetMapping("/test-data-flow/{sessionId}")
+    public ResponseEntity<Map<String, Object>> testDataFlow(@PathVariable String sessionId) {
+        try {
+            Map<String, Object> response = new HashMap<>();
+            response.put("sessionId", sessionId);
+            
+            // Step 1: Check if test result exists
+            Optional<TestResult> testResult = testResultService.getTestResultBySessionId(sessionId);
+            response.put("testResultExists", testResult.isPresent());
+            if (testResult.isPresent()) {
+                response.put("testResultId", testResult.get().getId());
+                response.put("testResultSessionId", testResult.get().getSessionId());
+                response.put("mbtiType", testResult.get().getMbtiType());
+                response.put("riasecCode", testResult.get().getRiasecCode());
+            }
+            
+            // Step 2: Check if detailed scoring exists
+            com.app.dto.DetailedScoringDTO scoringData = testResultService.getDetailedScoringData(sessionId);
+            response.put("scoringDataExists", scoringData != null);
+            if (scoringData != null) {
+                response.put("riasecScores", scoringData.getRiasecScores());
+                response.put("mbtiScores", scoringData.getMbtiScores());
+                response.put("finalRiasecCode", scoringData.getFinalRiasecCode());
+                response.put("finalMbtiType", scoringData.getFinalMbtiType());
+            }
+            
+            // Step 3: Check database directly
+            List<com.app.models.PersonalityTestScores> allScores = testResultService.getAllPersonalityTestScores();
+            response.put("totalScoresInDB", allScores.size());
+            response.put("scoresForSession", allScores.stream()
+                .filter(score -> score.getSessionId().toString().equals(sessionId))
+                .map(score -> {
+                    Map<String, Object> scoreData = new HashMap<>();
+                    scoreData.put("id", score.getId());
+                    scoreData.put("sessionId", score.getSessionId());
+                    scoreData.put("riasecRPercentage", score.getRiasecRPercentage());
+                    scoreData.put("mbtiEPercentage", score.getMbtiEPercentage());
+                    return scoreData;
+                })
+                .collect(java.util.stream.Collectors.toList()));
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
+     * Check if personality_test_scores table has data by session ID (legacy)
+     */
+    @GetMapping("/check-scores/{sessionId}")
+    public ResponseEntity<Map<String, Object>> checkScoresData(@PathVariable String sessionId) {
+        try {
+            Map<String, Object> response = new HashMap<>();
+            response.put("sessionId", sessionId);
+            
+            // Add debugging
+            logger.info("Checking scores for session ID: {}", sessionId);
+            
+            // Check if detailed scoring exists
+            com.app.dto.DetailedScoringDTO scoringData = testResultService.getDetailedScoringData(sessionId);
+            response.put("scoringDataExists", scoringData != null);
+            
+            if (scoringData != null) {
+                logger.info("Found scoring data for session: {}", sessionId);
+                response.put("riasecScores", scoringData.getRiasecScores());
+                response.put("mbtiScores", scoringData.getMbtiScores());
+                response.put("finalRiasecCode", scoringData.getFinalRiasecCode());
+                response.put("finalMbtiType", scoringData.getFinalMbtiType());
+            } else {
+                logger.warn("No scoring data found for session: {}", sessionId);
+            }
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error checking scores for session {}: {}", sessionId, e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
+     * Get personality test scores by test result ID (preferred method)
+     */
+    @GetMapping("/scores/{testResultId}")
+    public ResponseEntity<Map<String, Object>> getScoresByTestResultId(@PathVariable Long testResultId) {
+        try {
+            Map<String, Object> response = new HashMap<>();
+            response.put("testResultId", testResultId);
+            
+            // Add debugging
+            logger.info("Getting scores for test result ID: {}", testResultId);
+            
+            // Get detailed scoring data
+            com.app.dto.DetailedScoringDTO scoringData = testResultService.getDetailedScoringDataByTestResultId(testResultId);
+            response.put("scoringDataExists", scoringData != null);
+            
+            if (scoringData != null) {
+                logger.info("Found scoring data for test result ID: {}", testResultId);
+                response.put("riasecScores", scoringData.getRiasecScores());
+                response.put("mbtiScores", scoringData.getMbtiScores());
+                response.put("finalRiasecCode", scoringData.getFinalRiasecCode());
+                response.put("finalMbtiType", scoringData.getFinalMbtiType());
+                response.put("status", "SUCCESS");
+            } else {
+                logger.warn("No scoring data found for test result ID: {}", testResultId);
+                response.put("status", "NOT_FOUND");
+                response.put("message", "No detailed scoring data found for this test result");
+            }
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error getting scores for test result ID {}: {}", testResultId, e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "ERROR");
+            response.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
+     * Force regenerate scoring data for a session (useful for fixing missing data)
+     */
+    @PostMapping("/force-regenerate-scoring/{sessionId}")
+    public ResponseEntity<Map<String, Object>> forceRegenerateScoring(@PathVariable String sessionId) {
+        try {
+            logger.info("Force regenerating scoring data for session: {}", sessionId);
+            boolean success = testResultService.regenerateDetailedScoringData(sessionId);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", success);
+            if (success) {
+                response.put("message", "Scoring data regenerated successfully");
+                // Also return the regenerated data
+                com.app.dto.DetailedScoringDTO scoringData = testResultService.getDetailedScoringData(sessionId);
+                if (scoringData != null) {
+                    response.put("data", scoringData);
+                }
+            } else {
+                response.put("message", "Failed to regenerate scoring data - check if session exists");
+            }
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error force regenerating scoring data for session {}: {}", sessionId, e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
+     * Test endpoint to create sample detailed scoring data
+     */
+    @PostMapping("/test-scoring/{sessionId}")
+    public ResponseEntity<Map<String, Object>> createTestScoringData(@PathVariable String sessionId) {
+        try {
+            // Get the test result
+            Optional<TestResult> testResultOpt = testResultService.getTestResultBySessionId(sessionId);
+            if (testResultOpt.isEmpty()) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", "No test result found for session: " + sessionId);
+                return ResponseEntity.notFound().build();
+            }
+            
+            TestResult testResult = testResultOpt.get();
+            
+            // Create sample detailed scoring data with realistic percentages
+            Map<String, Object> sampleData = new HashMap<>();
+            sampleData.put("riasecScores", Map.of(
+                "R", Map.of("raw", 35, "percentage", 70.0, "label", "Realistic", "description", "Practical, hands-on, mechanical"),
+                "I", Map.of("raw", 28, "percentage", 56.0, "label", "Investigative", "description", "Analytical, scientific, intellectual"),
+                "A", Map.of("raw", 22, "percentage", 44.0, "label", "Artistic", "description", "Creative, expressive, original"),
+                "S", Map.of("raw", 40, "percentage", 80.0, "label", "Social", "description", "Helpful, cooperative, caring"),
+                "E", Map.of("raw", 32, "percentage", 64.0, "label", "Enterprising", "description", "Leadership, persuasive, ambitious"),
+                "C", Map.of("raw", 18, "percentage", 36.0, "label", "Conventional", "description", "Organized, detail-oriented, systematic")
+            ));
+            
+            sampleData.put("mbtiScores", Map.of(
+                "E", Map.of("raw", 18, "percentage", 72.0, "label", "Extraversion", "description", "Outgoing, social, energetic"),
+                "I", Map.of("raw", 7, "percentage", 28.0, "label", "Introversion", "description", "Reflective, reserved, focused"),
+                "S", Map.of("raw", 20, "percentage", 80.0, "label", "Sensing", "description", "Practical, concrete, detail-oriented"),
+                "N", Map.of("raw", 5, "percentage", 20.0, "label", "Intuition", "description", "Abstract, theoretical, future-focused"),
+                "T", Map.of("raw", 15, "percentage", 60.0, "label", "Thinking", "description", "Logical, objective, analytical"),
+                "F", Map.of("raw", 10, "percentage", 40.0, "label", "Feeling", "description", "Values-based, empathetic, personal"),
+                "J", Map.of("raw", 22, "percentage", 88.0, "label", "Judging", "description", "Structured, decisive, organized"),
+                "P", Map.of("raw", 3, "percentage", 12.0, "label", "Perceiving", "description", "Flexible, adaptable, spontaneous")
+            ));
+            
+            sampleData.put("finalRiasecCode", testResult.getRiasecCode());
+            sampleData.put("finalMbtiType", testResult.getMbtiType());
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", sampleData);
+            response.put("message", "Sample detailed scoring data created");
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("error", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }

@@ -45,6 +45,15 @@ public class TestResult {
     @Column(name = "student_goals", columnDefinition = "TEXT")
     private String studentGoals;
     
+    @Column(name = "age")
+    private Integer age;
+    
+    @Column(name = "gender", length = 20)
+    private String gender;
+    
+    @Column(name = "is_from_plmar")
+    private Boolean isFromPLMar;
+    
     @Column(name = "generated_at")
     private LocalDateTime generatedAt;
 
@@ -165,6 +174,30 @@ public class TestResult {
         this.studentGoals = studentGoals;
     }
     
+    public Integer getAge() {
+        return age;
+    }
+    
+    public void setAge(Integer age) {
+        this.age = age;
+    }
+    
+    public String getGender() {
+        return gender;
+    }
+    
+    public void setGender(String gender) {
+        this.gender = gender;
+    }
+    
+    public Boolean getIsFromPLMar() {
+        return isFromPLMar;
+    }
+    
+    public void setIsFromPLMar(Boolean isFromPLMar) {
+        this.isFromPLMar = isFromPLMar;
+    }
+    
     public LocalDateTime getGeneratedAt() {
         return generatedAt;
     }
@@ -200,6 +233,9 @@ public class TestResult {
                 ", sessionId=" + sessionId +
                 ", mbtiType='" + mbtiType + '\'' +
                 ", riasecCode='" + riasecCode + '\'' +
+                ", age=" + age +
+                ", gender='" + gender + '\'' +
+                ", isFromPLMar=" + isFromPLMar +
                 ", generatedAt=" + generatedAt +
                 '}';
     }

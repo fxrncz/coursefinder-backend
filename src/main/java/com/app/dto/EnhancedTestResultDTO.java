@@ -19,6 +19,9 @@ public class EnhancedTestResultDTO {
     private String studyTips;
     private String personalityGrowthTips;
     private String studentGoals;
+    private Integer age;
+    private String gender;
+    private Boolean isFromPLMar;
     
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime generatedAt;
@@ -144,6 +147,15 @@ public class EnhancedTestResultDTO {
     
     public String getStudentGoals() { return studentGoals; }
     public void setStudentGoals(String studentGoals) { this.studentGoals = studentGoals; }
+    
+    public Integer getAge() { return age; }
+    public void setAge(Integer age) { this.age = age; }
+    
+    public String getGender() { return gender; }
+    public void setGender(String gender) { this.gender = gender; }
+    
+    public Boolean getIsFromPLMar() { return isFromPLMar; }
+    public void setIsFromPLMar(Boolean isFromPLMar) { this.isFromPLMar = isFromPLMar; }
     
     public LocalDateTime getGeneratedAt() { return generatedAt; }
     public void setGeneratedAt(LocalDateTime generatedAt) { this.generatedAt = generatedAt; }
