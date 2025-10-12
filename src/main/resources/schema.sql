@@ -182,3 +182,16 @@ CREATE INDEX IF NOT EXISTS idx_personality_test_scores_final_riasec ON personali
 CREATE INDEX IF NOT EXISTS idx_personality_test_scores_final_mbti ON personality_test_scores(final_mbti_type);
 
 ALTER TABLE development_plan DROP COLUMN IF EXISTS cert_learning_resources;
+
+-- Admin accounts table (for system administrators)
+CREATE TABLE IF NOT EXISTS admins (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    full_name VARCHAR(100),
+    is_active BOOLEAN DEFAULT TRUE
+);
+
+CREATE INDEX IF NOT EXISTS idx_admins_email ON admins(email);
+CREATE INDEX IF NOT EXISTS idx_admins_username ON admins(username);
