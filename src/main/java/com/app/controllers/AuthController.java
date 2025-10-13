@@ -215,7 +215,7 @@ public class AuthController {
             if (userOptional.isEmpty()) {
                 System.out.println("User not found for email: " + email);
                 response.put("success", false);
-                response.put("message", "Invalid email or password");
+                response.put("message", "The email address you entered is not registered in our system. Please check your email or create a new account.");
                 return ResponseEntity.badRequest().body(response);
             }
             
@@ -249,7 +249,7 @@ public class AuthController {
             if (!passwordOk) {
                 System.out.println("Password mismatch for user: " + user.getUsername());
                 response.put("success", false);
-                response.put("message", "Invalid email or password");
+                response.put("message", "The password you entered is incorrect. Please try again or use 'Forgot password?' to reset it.");
                 return ResponseEntity.badRequest().body(response);
             }
             
@@ -375,6 +375,7 @@ public class AuthController {
 
     // Delete user account endpoint
     @DeleteMapping("/delete-account")
+    @Transactional
     public ResponseEntity<Map<String, Object>> deleteAccount(@RequestBody Map<String, Object> request) {
         Map<String, Object> response = new HashMap<>();
         
@@ -409,8 +410,12 @@ public class AuthController {
             
             // Delete user's test results first to maintain referential integrity and privacy
             try {
+                System.out.println("🗑️ Attempting to delete test results for user ID: " + userId);
                 testResultRepository.deleteByUserId(userId);
-            } catch (Exception ignore) {
+                System.out.println("✅ Test results deleted successfully for user ID: " + userId);
+            } catch (Exception testDeleteError) {
+                System.err.println("⚠️ Error deleting test results for user ID " + userId + ": " + testDeleteError.getMessage());
+                testDeleteError.printStackTrace();
                 // Proceed even if no results or soft failure; user deletion will continue
             }
 
