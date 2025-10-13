@@ -119,6 +119,45 @@ public class AdminDashboardService {
         
         stats.put("demographics", demographics);
         
+        // Average age calculation
+        List<TestResult> resultsWithAge = allResults.stream()
+            .filter(result -> result.getAge() != null)
+            .collect(Collectors.toList());
+        
+        if (!resultsWithAge.isEmpty()) {
+            double avgAge = resultsWithAge.stream()
+                .mapToInt(TestResult::getAge)
+                .average()
+                .orElse(0.0);
+            stats.put("averageAge", Math.round(avgAge * 10.0) / 10.0);
+            stats.put("totalWithAge", resultsWithAge.size());
+        } else {
+            stats.put("averageAge", 0.0);
+            stats.put("totalWithAge", 0);
+        }
+        
+        // Age distribution for chart (sorted data)
+        List<Map<String, Object>> ageDistributionChart = new ArrayList<>();
+        String[] ageGroups = {"Under 18", "18-22", "23-25", "26-30", "Above 30"};
+        for (String group : ageGroups) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("ageGroup", group);
+            item.put("count", ageDistribution.getOrDefault(group, 0L));
+            ageDistributionChart.add(item);
+        }
+        stats.put("ageDistributionChart", ageDistributionChart);
+        
+        // Gender distribution for chart
+        List<Map<String, Object>> genderDistributionChart = genderDistribution.entrySet().stream()
+            .map(entry -> {
+                Map<String, Object> item = new HashMap<>();
+                item.put("gender", entry.getKey());
+                item.put("count", entry.getValue());
+                return item;
+            })
+            .collect(Collectors.toList());
+        stats.put("genderDistributionChart", genderDistributionChart);
+        
         return stats;
     }
     
