@@ -82,6 +82,18 @@ public class EmailService {
         }
     }
 
+    /**
+     * Generic method to send custom HTML emails
+     * Used for test results reports and other automated emails
+     */
+    public void sendCustomEmail(String toEmail, String subject, String htmlContent) {
+        if ("sendgrid".equalsIgnoreCase(emailProvider)) {
+            sendCustomWithSendGrid(toEmail, subject, htmlContent);
+        } else {
+            sendCustomWithResend(toEmail, subject, htmlContent);
+        }
+    }
+
     private void sendWithSendGrid(String toEmail, String code) {
         if (sendgridApiKey == null || sendgridApiKey.isEmpty()) {
             throw new IllegalStateException("SENDGRID_API_KEY is not configured");
@@ -495,6 +507,83 @@ public class EmailService {
             System.err.println("📧 Resend: Exception during HTTP request: " + e.getMessage());
             e.printStackTrace();
             throw e;
+        }
+    }
+
+    /**
+     * Send custom HTML email via SendGrid
+     */
+    private void sendCustomWithSendGrid(String toEmail, String subject, String htmlContent) {
+        if (sendgridApiKey == null || sendgridApiKey.isEmpty()) {
+            throw new IllegalStateException("SENDGRID_API_KEY is not configured");
+        }
+        if (sendgridFrom == null || sendgridFrom.isEmpty()) {
+            throw new IllegalStateException("sendgrid.from is not configured");
+        }
+
+        RestTemplate restTemplate = new RestTemplate();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(sendgridApiKey);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("from", Map.of("email", extractEmail(sendgridFrom), "name", extractName(sendgridFrom)));
+        body.put("reply_to", Map.of("email", extractEmail(sendgridFrom), "name", extractName(sendgridFrom)));
+        body.put("personalizations", new Object[]{ Map.of(
+                "to", new Object[]{ Map.of("email", toEmail) }
+        ) });
+        body.put("subject", subject);
+        body.put("categories", new String[]{"automated", "test_results"});
+        
+        // Generate plain text version from HTML (simple approach)
+        String plainText = htmlContent.replaceAll("<[^>]*>", "").replaceAll("\\s+", " ").trim();
+        
+        body.put("content", new Object[]{
+                Map.of("type", "text/plain", "value", plainText),
+                Map.of("type", "text/html", "value", htmlContent)
+        });
+        body.put("tracking_settings", Map.of(
+                "click_tracking", Map.of("enable", true),
+                "open_tracking", Map.of("enable", true)
+        ));
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+        var response = restTemplate.postForEntity(SENDGRID_SEND_ENDPOINT, request, String.class);
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            throw new RuntimeException("SendGrid send failed: " + response.getStatusCode().value() + " - " + response.getBody());
+        }
+    }
+
+    /**
+     * Send custom HTML email via Resend
+     */
+    private void sendCustomWithResend(String toEmail, String subject, String htmlContent) {
+        if (resendApiKey == null || resendApiKey.isEmpty()) {
+            throw new IllegalStateException("RESEND_API_KEY is not configured");
+        }
+
+        RestTemplate restTemplate = new RestTemplate();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(resendApiKey);
+
+        Map<String, Object> body = new HashMap<>();
+        String fromAddress = (resendFrom != null && !resendFrom.isEmpty()) ? resendFrom : "onboarding@resend.dev";
+        body.put("from", fromAddress);
+        body.put("to", new String[]{ toEmail });
+        body.put("subject", subject);
+        body.put("html", htmlContent);
+        
+        // Generate plain text version
+        String plainText = htmlContent.replaceAll("<[^>]*>", "").replaceAll("\\s+", " ").trim();
+        body.put("text", plainText);
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+        var response = restTemplate.postForEntity("https://api.resend.com/emails", request, String.class);
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            throw new RuntimeException("Resend send failed: " + response.getStatusCode().value() + " - " + response.getBody());
         }
     }
 }

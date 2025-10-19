@@ -61,6 +61,12 @@ public class TestResultService {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private EmailReportService emailReportService;
+
+    @Autowired
+    private com.app.repositories.UserRepository userRepository;
+
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     
@@ -214,6 +220,34 @@ public class TestResultService {
                 } catch (Exception e) {
                     logger.error("Failed to save detailed scoring data for test result ID {}: {}", savedResult.getId(), e.getMessage(), e);
                     // Don't fail the entire process if scoring data save fails
+                }
+                
+                // ✨ NEW: Send automated email report for registered users
+                if (userId != null) {
+                    try {
+                        logger.info("🚀 Triggering automated email report for user ID: {}", userId);
+                        com.app.models.User user = userRepository.findById(userId)
+                            .orElse(null);
+                        
+                        if (user != null && user.getEmail() != null && !user.getEmail().isEmpty()) {
+                            // Build enhanced result DTO (same data shown on results page)
+                            Optional<MbtiDetails> mbtiDetails = getDetailedMbtiInformation(savedResult.getMbtiType());
+                            EnhancedTestResultDTO enhancedResult = convertToEnhancedDTO(savedResult, mbtiDetails.orElse(null));
+                            
+                            // Get detailed scoring data (with percentages)
+                            com.app.dto.DetailedScoringDTO scoringData = 
+                                enhancedScoringService.getDetailedScoringData(savedResult.getSessionId());
+                            
+                            // Send email asynchronously with all required data (won't block response)
+                            emailReportService.sendTestResultsEmail(savedResult, user, enhancedResult, scoringData);
+                            logger.info("📧 Email report task queued for user: {}", user.getEmail());
+                        } else {
+                            logger.warn("⚠️ User {} not found or has no email, skipping email report", userId);
+                        }
+                    } catch (Exception emailError) {
+                        // Log but don't fail the test submission
+                        logger.error("❌ Error queuing email report for user {}: {}", userId, emailError.getMessage());
+                    }
                 }
                 
                 // Convert to DTO and return (using legacy format for compatibility)
