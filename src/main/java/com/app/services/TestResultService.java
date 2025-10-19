@@ -66,6 +66,18 @@ public class TestResultService {
 
     @Autowired
     private com.app.repositories.UserRepository userRepository;
+    
+    @Autowired
+    private AiContentValidationService aiValidationService;
+    
+    @Autowired
+    private AiComparisonService aiComparisonService;
+    
+    @Autowired
+    private AiModelComparisonService aiModelComparisonService;
+    
+    @org.springframework.beans.factory.annotation.Value("${huggingface.validation.enabled:false}")
+    private boolean aiValidationEnabled;
 
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -1580,6 +1592,194 @@ public class TestResultService {
             // Set empty plan on error
             dto.setCourseDevelopmentPlan(new com.app.dto.CourseDevelopmentPlanDTO(
                 entity.getMbtiType(), entity.getRiasecCode(), new ArrayList<>()));
+        }
+        
+        // 🤖 AI-POWERED COURSE AND CAREER RANKING
+        if (aiValidationEnabled) {
+            try {
+                logger.info("🤖 AI: Running intelligent course and career comparison");
+                
+                // Get AI-powered course rankings
+                List<AiComparisonService.CourseRanking> courseRankings = 
+                    aiComparisonService.rankCoursesByPersonality(
+                        entity.getMbtiType(), 
+                        entity.getRiasecCode(), 
+                        entity.getCoursePath()
+                    );
+                
+                // Convert to DTO
+                List<EnhancedTestResultDTO.AiCourseRanking> aiCourseRankings = courseRankings.stream()
+                    .map(ranking -> {
+                        EnhancedTestResultDTO.AiCourseRanking courseDto = new EnhancedTestResultDTO.AiCourseRanking();
+                        courseDto.setRank(ranking.getRank());
+                        courseDto.setCourseName(ranking.getCourseName());
+                        courseDto.setMatchScore(ranking.getMatchScore());
+                        courseDto.setMatchReason(ranking.getMatchReason());
+                        courseDto.setAiRecommended(ranking.isAiRecommended());
+                        return courseDto;
+                    })
+                    .collect(java.util.stream.Collectors.toList());
+                dto.setAiCourseRankings(aiCourseRankings);
+                
+                // Get AI-powered career rankings
+                List<AiComparisonService.CareerRanking> careerRankings = 
+                    aiComparisonService.rankCareersByPersonality(
+                        entity.getMbtiType(), 
+                        entity.getRiasecCode(), 
+                        entity.getCareerSuggestions()
+                    );
+                
+                // Convert to DTO
+                List<EnhancedTestResultDTO.AiCareerRanking> aiCareerRankings = careerRankings.stream()
+                    .map(ranking -> {
+                        EnhancedTestResultDTO.AiCareerRanking careerDto = new EnhancedTestResultDTO.AiCareerRanking();
+                        careerDto.setRank(ranking.getRank());
+                        careerDto.setCareerName(ranking.getCareerName());
+                        careerDto.setMatchScore(ranking.getMatchScore());
+                        careerDto.setMatchReason(ranking.getMatchReason());
+                        careerDto.setAiRecommended(ranking.isAiRecommended());
+                        return careerDto;
+                    })
+                    .collect(java.util.stream.Collectors.toList());
+                dto.setAiCareerRankings(aiCareerRankings);
+                
+                logger.info("✅ AI ranked {} courses and {} careers", 
+                    aiCourseRankings.size(), aiCareerRankings.size());
+                
+                // 🤖 AI MODEL COMPARISON
+                try {
+                    logger.info("🤖 AI: Running model comparison analysis");
+                    
+                    // Get course comparison
+                    AiModelComparisonService.ModelComparisonResult courseComparison = 
+                        aiModelComparisonService.compareCourseAnalysis(
+                            entity.getMbtiType(), 
+                            entity.getRiasecCode(), 
+                            entity.getCoursePath()
+                        );
+                    
+                    // Get career comparison
+                    AiModelComparisonService.ModelComparisonResult careerComparison = 
+                        aiModelComparisonService.compareCareerAnalysis(
+                            entity.getMbtiType(), 
+                            entity.getRiasecCode(), 
+                            entity.getCareerSuggestions()
+                        );
+                    
+                    // Combine results into single comparison object
+                    EnhancedTestResultDTO.AiModelComparison modelComparison = 
+                        new EnhancedTestResultDTO.AiModelComparison();
+                    modelComparison.setMbtiType(entity.getMbtiType());
+                    modelComparison.setRiasecCode(entity.getRiasecCode());
+                    modelComparison.setModel1Name("DialoGPT-Large (Analytical)");
+                    modelComparison.setModel2Name("GPT-Neo-2.7B (Creative)");
+                    
+                    // Convert course comparisons
+                    if (courseComparison.getCourseComparisons() != null) {
+                        List<EnhancedTestResultDTO.CourseComparison> courseComparisons = 
+                            courseComparison.getCourseComparisons().stream()
+                                .map(comp -> {
+                                    EnhancedTestResultDTO.CourseComparison courseCompDto = 
+                                        new EnhancedTestResultDTO.CourseComparison();
+                                    courseCompDto.setCourseName(comp.getCourseName());
+                                    courseCompDto.setModel1Score(comp.getModel1Score());
+                                    courseCompDto.setModel2Score(comp.getModel2Score());
+                                    courseCompDto.setModel1Analysis(comp.getModel1Analysis());
+                                    courseCompDto.setModel2Analysis(comp.getModel2Analysis());
+                                    courseCompDto.setAgreement(comp.getAgreement());
+                                    return courseCompDto;
+                                })
+                                .collect(java.util.stream.Collectors.toList());
+                        modelComparison.setCourseComparisons(courseComparisons);
+                    }
+                    
+                    // Convert career comparisons
+                    if (careerComparison.getCareerComparisons() != null) {
+                        List<EnhancedTestResultDTO.CareerComparison> careerComparisons = 
+                            careerComparison.getCareerComparisons().stream()
+                                .map(comp -> {
+                                    EnhancedTestResultDTO.CareerComparison careerCompDto = 
+                                        new EnhancedTestResultDTO.CareerComparison();
+                                    careerCompDto.setCareerName(comp.getCareerName());
+                                    careerCompDto.setModel1Score(comp.getModel1Score());
+                                    careerCompDto.setModel2Score(comp.getModel2Score());
+                                    careerCompDto.setModel1Analysis(comp.getModel1Analysis());
+                                    careerCompDto.setModel2Analysis(comp.getModel2Analysis());
+                                    careerCompDto.setAgreement(comp.getAgreement());
+                                    return careerCompDto;
+                                })
+                                .collect(java.util.stream.Collectors.toList());
+                        modelComparison.setCareerComparisons(careerComparisons);
+                    }
+                    
+                    dto.setAiModelComparison(modelComparison);
+                    
+                    logger.info("✅ AI model comparison completed");
+                    
+                } catch (Exception e) {
+                    logger.warn("⚠️ AI model comparison failed (non-critical): {}", e.getMessage());
+                }
+                    
+            } catch (Exception e) {
+                logger.warn("⚠️ AI ranking failed (non-critical): {}", e.getMessage());
+            }
+        }
+        
+        // Run AI validation (OPTIONAL - won't block if it fails)
+        if (!aiValidationEnabled) {
+            logger.info("ℹ️ AI validation is disabled in configuration");
+            return dto;
+        }
+        
+        try {
+            logger.info("🤖 Starting AI validation for test result: {}", entity.getId());
+            
+            // Run validation asynchronously to avoid blocking
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    AiContentValidationService.ValidationReport validationReport = 
+                        aiValidationService.validateTestResult(dto);
+                    
+                    // Convert validation report to status DTO
+                    EnhancedTestResultDTO.AiValidationStatusDTO validationStatus = 
+                        new EnhancedTestResultDTO.AiValidationStatusDTO();
+                    validationStatus.setValidated(true);
+                    validationStatus.setValidationStatus(validationReport.isOverallValid() ? "VALIDATED" : "ISSUES_FOUND");
+                    validationStatus.setValidationScore(validationReport.getValidationScore());
+                    validationStatus.setValidationMessage(validationReport.isOverallValid() ? 
+                        "All content has been validated by AI" : 
+                        String.format("AI found %d potential issues", validationReport.getIssues().size()));
+                    validationStatus.setValidatedAt(java.time.LocalDateTime.now().toString());
+                    
+                    // Add validation issues
+                    List<String> issues = validationReport.getIssues().stream()
+                        .map(issue -> issue.getTitle() + ": " + issue.getDescription())
+                        .collect(java.util.stream.Collectors.toList());
+                    validationStatus.setValidationIssues(issues);
+                    
+                    dto.setAiValidationStatus(validationStatus);
+                    
+                    logger.info("✅ AI validation completed. Score: {}, Issues: {}", 
+                        validationReport.getValidationScore(), validationReport.getIssues().size());
+                } catch (Exception e) {
+                    logger.warn("⚠️ AI validation failed (non-critical): {}", e.getMessage());
+                }
+            });
+            
+            // Set temporary "in progress" status while validation runs
+            EnhancedTestResultDTO.AiValidationStatusDTO tempStatus = 
+                new EnhancedTestResultDTO.AiValidationStatusDTO();
+            tempStatus.setValidated(false);
+            tempStatus.setValidationStatus("VALIDATION_IN_PROGRESS");
+            tempStatus.setValidationScore(0.0);
+            tempStatus.setValidationMessage("AI validation is running in the background");
+            tempStatus.setValidatedAt(java.time.LocalDateTime.now().toString());
+            tempStatus.setValidationIssues(new ArrayList<>());
+            dto.setAiValidationStatus(tempStatus);
+                
+        } catch (Exception e) {
+            logger.warn("⚠️ Could not start AI validation (non-critical): {}", e.getMessage());
+            // Don't set any validation status - results will work without AI validation
         }
         
         return dto;

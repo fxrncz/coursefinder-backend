@@ -4,6 +4,8 @@ import com.app.models.MbtiDetails;
 import com.fasterxml.jackson.annotation.JsonFormat;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 public class EnhancedTestResultDTO {
@@ -43,6 +45,16 @@ public class EnhancedTestResultDTO {
     
     // Course Development Plan
     private CourseDevelopmentPlanDTO courseDevelopmentPlan;
+    
+    // AI Validation Status
+    private AiValidationStatusDTO aiValidationStatus;
+    
+    // AI-powered course and career rankings
+    private List<AiCourseRanking> aiCourseRankings;
+    private List<AiCareerRanking> aiCareerRankings;
+    
+    // AI Model Comparison Results
+    private AiModelComparison aiModelComparison;
     
     // Static inner class for detailed MBTI information
     public static class DetailedMbtiInfoDTO {
@@ -265,4 +277,192 @@ public class EnhancedTestResultDTO {
     
     public CourseDevelopmentPlanDTO getCourseDevelopmentPlan() { return courseDevelopmentPlan; }
     public void setCourseDevelopmentPlan(CourseDevelopmentPlanDTO courseDevelopmentPlan) { this.courseDevelopmentPlan = courseDevelopmentPlan; }
+    
+    public AiValidationStatusDTO getAiValidationStatus() { return aiValidationStatus; }
+    public void setAiValidationStatus(AiValidationStatusDTO aiValidationStatus) { this.aiValidationStatus = aiValidationStatus; }
+    
+    public List<AiCourseRanking> getAiCourseRankings() { return aiCourseRankings; }
+    public void setAiCourseRankings(List<AiCourseRanking> aiCourseRankings) { this.aiCourseRankings = aiCourseRankings; }
+    
+    public List<AiCareerRanking> getAiCareerRankings() { return aiCareerRankings; }
+    public void setAiCareerRankings(List<AiCareerRanking> aiCareerRankings) { this.aiCareerRankings = aiCareerRankings; }
+    
+    public AiModelComparison getAiModelComparison() { return aiModelComparison; }
+    public void setAiModelComparison(AiModelComparison aiModelComparison) { this.aiModelComparison = aiModelComparison; }
+    
+    // AI Validation Status DTO
+    public static class AiValidationStatusDTO {
+        private boolean validated;
+        private String validationStatus;
+        private double validationScore;
+        private String validationMessage;
+        private String validatedAt;
+        private List<String> validationIssues;
+        
+        public AiValidationStatusDTO() {
+            this.validationIssues = new ArrayList<>();
+        }
+        
+        // Getters and setters
+        public boolean isValidated() { return validated; }
+        public void setValidated(boolean validated) { this.validated = validated; }
+        
+        public String getValidationStatus() { return validationStatus; }
+        public void setValidationStatus(String validationStatus) { this.validationStatus = validationStatus; }
+        
+        public double getValidationScore() { return validationScore; }
+        public void setValidationScore(double validationScore) { this.validationScore = validationScore; }
+        
+        public String getValidationMessage() { return validationMessage; }
+        public void setValidationMessage(String validationMessage) { this.validationMessage = validationMessage; }
+        
+        public String getValidatedAt() { return validatedAt; }
+        public void setValidatedAt(String validatedAt) { this.validatedAt = validatedAt; }
+        
+        public List<String> getValidationIssues() { return validationIssues; }
+        public void setValidationIssues(List<String> validationIssues) { this.validationIssues = validationIssues; }
+    }
+    
+    // AI Course Ranking DTO
+    public static class AiCourseRanking {
+        private int rank;
+        private String courseName;
+        private double matchScore;
+        private String matchReason;
+        private boolean aiRecommended;
+        
+        public AiCourseRanking() {}
+        
+        public int getRank() { return rank; }
+        public void setRank(int rank) { this.rank = rank; }
+        
+        public String getCourseName() { return courseName; }
+        public void setCourseName(String courseName) { this.courseName = courseName; }
+        
+        public double getMatchScore() { return matchScore; }
+        public void setMatchScore(double matchScore) { this.matchScore = matchScore; }
+        
+        public String getMatchReason() { return matchReason; }
+        public void setMatchReason(String matchReason) { this.matchReason = matchReason; }
+        
+        public boolean isAiRecommended() { return aiRecommended; }
+        public void setAiRecommended(boolean aiRecommended) { this.aiRecommended = aiRecommended; }
+    }
+    
+    // AI Career Ranking DTO
+    public static class AiCareerRanking {
+        private int rank;
+        private String careerName;
+        private double matchScore;
+        private String matchReason;
+        private boolean aiRecommended;
+        
+        public AiCareerRanking() {}
+        
+        public int getRank() { return rank; }
+        public void setRank(int rank) { this.rank = rank; }
+        
+        public String getCareerName() { return careerName; }
+        public void setCareerName(String careerName) { this.careerName = careerName; }
+        
+        public double getMatchScore() { return matchScore; }
+        public void setMatchScore(double matchScore) { this.matchScore = matchScore; }
+        
+        public String getMatchReason() { return matchReason; }
+        public void setMatchReason(String matchReason) { this.matchReason = matchReason; }
+        
+        public boolean isAiRecommended() { return aiRecommended; }
+        public void setAiRecommended(boolean aiRecommended) { this.aiRecommended = aiRecommended; }
+    }
+    
+    // AI Model Comparison DTO
+    public static class AiModelComparison {
+        private String mbtiType;
+        private String riasecCode;
+        private String model1Name;
+        private String model2Name;
+        private List<CourseComparison> courseComparisons;
+        private List<CareerComparison> careerComparisons;
+        
+        public AiModelComparison() {}
+        
+        // Getters and setters
+        public String getMbtiType() { return mbtiType; }
+        public void setMbtiType(String mbtiType) { this.mbtiType = mbtiType; }
+        
+        public String getRiasecCode() { return riasecCode; }
+        public void setRiasecCode(String riasecCode) { this.riasecCode = riasecCode; }
+        
+        public String getModel1Name() { return model1Name; }
+        public void setModel1Name(String model1Name) { this.model1Name = model1Name; }
+        
+        public String getModel2Name() { return model2Name; }
+        public void setModel2Name(String model2Name) { this.model2Name = model2Name; }
+        
+        public List<CourseComparison> getCourseComparisons() { return courseComparisons; }
+        public void setCourseComparisons(List<CourseComparison> courseComparisons) { this.courseComparisons = courseComparisons; }
+        
+        public List<CareerComparison> getCareerComparisons() { return careerComparisons; }
+        public void setCareerComparisons(List<CareerComparison> careerComparisons) { this.careerComparisons = careerComparisons; }
+    }
+    
+    public static class CourseComparison {
+        private String courseName;
+        private double model1Score;
+        private double model2Score;
+        private String model1Analysis;
+        private String model2Analysis;
+        private String agreement;
+        
+        public CourseComparison() {}
+        
+        // Getters and setters
+        public String getCourseName() { return courseName; }
+        public void setCourseName(String courseName) { this.courseName = courseName; }
+        
+        public double getModel1Score() { return model1Score; }
+        public void setModel1Score(double model1Score) { this.model1Score = model1Score; }
+        
+        public double getModel2Score() { return model2Score; }
+        public void setModel2Score(double model2Score) { this.model2Score = model2Score; }
+        
+        public String getModel1Analysis() { return model1Analysis; }
+        public void setModel1Analysis(String model1Analysis) { this.model1Analysis = model1Analysis; }
+        
+        public String getModel2Analysis() { return model2Analysis; }
+        public void setModel2Analysis(String model2Analysis) { this.model2Analysis = model2Analysis; }
+        
+        public String getAgreement() { return agreement; }
+        public void setAgreement(String agreement) { this.agreement = agreement; }
+    }
+    
+    public static class CareerComparison {
+        private String careerName;
+        private double model1Score;
+        private double model2Score;
+        private String model1Analysis;
+        private String model2Analysis;
+        private String agreement;
+        
+        public CareerComparison() {}
+        
+        // Getters and setters
+        public String getCareerName() { return careerName; }
+        public void setCareerName(String careerName) { this.careerName = careerName; }
+        
+        public double getModel1Score() { return model1Score; }
+        public void setModel1Score(double model1Score) { this.model1Score = model1Score; }
+        
+        public double getModel2Score() { return model2Score; }
+        public void setModel2Score(double model2Score) { this.model2Score = model2Score; }
+        
+        public String getModel1Analysis() { return model1Analysis; }
+        public void setModel1Analysis(String model1Analysis) { this.model1Analysis = model1Analysis; }
+        
+        public String getModel2Analysis() { return model2Analysis; }
+        public void setModel2Analysis(String model2Analysis) { this.model2Analysis = model2Analysis; }
+        
+        public String getAgreement() { return agreement; }
+        public void setAgreement(String agreement) { this.agreement = agreement; }
+    }
 }
