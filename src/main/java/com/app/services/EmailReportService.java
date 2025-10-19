@@ -9,6 +9,7 @@ import com.app.dto.CourseDevelopmentPlanDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +23,9 @@ public class EmailReportService {
     
     @Autowired
     private EmailService emailService;
+    
+    @Value("${backend.url:https://coursefinder-backend-production.up.railway.app}")
+    private String backendUrl;
     
     /**
      * Send automated test results email with ACTUAL data from results page
@@ -745,7 +749,8 @@ public class EmailReportService {
     
     private String buildViewOnlineSection(UUID sessionId) {
         String pdfDownloadUrl = String.format(
-            "http://localhost:8080/api/pdf-report/download/%s",
+            "%s/api/pdf-report/download/%s",
+            backendUrl,
             sessionId.toString()
         );
         
