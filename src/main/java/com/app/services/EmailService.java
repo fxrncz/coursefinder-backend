@@ -38,14 +38,34 @@ public class EmailService {
     private String frontendUrl;
 
     public void sendVerificationCode(String toEmail, String code) {
+        // Check if email service is configured
+        if (!isEmailConfigured()) {
+            System.out.println("⚠️ Email service not configured. Skipping email send.");
+            return;
+        }
+        
         if ("sendgrid".equalsIgnoreCase(emailProvider)) {
             sendWithSendGrid(toEmail, code);
         } else {
             sendWithResend(toEmail, code);
         }
     }
+    
+    private boolean isEmailConfigured() {
+        if ("sendgrid".equalsIgnoreCase(emailProvider)) {
+            return sendgridApiKey != null && !sendgridApiKey.trim().isEmpty();
+        } else {
+            return resendApiKey != null && !resendApiKey.trim().isEmpty();
+        }
+    }
 
     public void sendPasswordResetLink(String toEmail, String resetUrl) {
+        // Check if email service is configured
+        if (!isEmailConfigured()) {
+            System.out.println("⚠️ Email service not configured. Skipping password reset email.");
+            return;
+        }
+        
         if ("sendgrid".equalsIgnoreCase(emailProvider)) {
             sendResetWithSendGrid(toEmail, resetUrl);
         } else {
@@ -54,6 +74,12 @@ public class EmailService {
     }
 
     public void sendVerificationSuccessEmail(String toEmail, String username) {
+        // Check if email service is configured
+        if (!isEmailConfigured()) {
+            System.out.println("⚠️ Email service not configured. Skipping verification success email.");
+            return;
+        }
+        
         if ("sendgrid".equalsIgnoreCase(emailProvider)) {
             sendSuccessWithSendGrid(toEmail, username);
         } else {
@@ -66,6 +92,12 @@ public class EmailService {
         System.out.println("📧 EmailService: Provider = " + emailProvider);
         System.out.println("📧 EmailService: To = " + toEmail + ", Username = " + username);
         System.out.println("📧 EmailService: Frontend URL = " + frontendUrl);
+        
+        // Check if email service is configured
+        if (!isEmailConfigured()) {
+            System.out.println("⚠️ Email service not configured. Skipping account deletion email.");
+            return;
+        }
         
         try {
             if ("sendgrid".equalsIgnoreCase(emailProvider)) {
@@ -87,6 +119,12 @@ public class EmailService {
      * Used for test results reports and other automated emails
      */
     public void sendCustomEmail(String toEmail, String subject, String htmlContent) {
+        // Check if email service is configured
+        if (!isEmailConfigured()) {
+            System.out.println("⚠️ Email service not configured. Skipping custom email.");
+            return;
+        }
+        
         if ("sendgrid".equalsIgnoreCase(emailProvider)) {
             sendCustomWithSendGrid(toEmail, subject, htmlContent);
         } else {

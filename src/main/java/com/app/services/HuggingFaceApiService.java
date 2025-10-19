@@ -91,6 +91,12 @@ public class HuggingFaceApiService {
      * Call Hugging Face Inference API
      */
     private ValidationResponse callHuggingFaceApi(String model, String input, String taskType) {
+        // Check if API key is configured
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            log.warn("⚠️ HuggingFace API key not configured. Skipping AI validation.");
+            return new ValidationResponse(false, "AI validation disabled - API key not configured", 0.0);
+        }
+        
         try {
             String url = apiUrl.replace("/models", "/models/" + model);
             
