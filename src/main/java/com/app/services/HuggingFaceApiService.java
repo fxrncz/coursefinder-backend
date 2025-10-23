@@ -1,5 +1,6 @@
 package com.app.services;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
@@ -98,7 +99,17 @@ public class HuggingFaceApiService {
         }
         
         try {
-            String url = apiUrl.replace("/models", "/models/" + model);
+            // Build URL - support both old and new HuggingFace API endpoints
+            String url;
+            if (apiUrl.contains("/models")) {
+                // Old API format: https://api-inference.huggingface.co/models
+                url = apiUrl.replace("/models", "/models/" + model);
+            } else {
+                // New API format: https://router.huggingface.co/hf-inference
+                url = apiUrl + "/" + model;
+            }
+            
+            log.info("🔗 Constructed HuggingFace URL: {}", url);
             
             // Build request body with enhanced parameters for paid plan
             ApiRequest apiRequest = new ApiRequest(input);
@@ -118,12 +129,14 @@ public class HuggingFaceApiService {
                 .build();
             
             log.info("🤖 Calling Hugging Face API: {} for task: {}", model, taskType);
+            log.debug("📤 Request URL: {}", url);
+            log.debug("📤 Request Body: {}", requestBody);
             
             try (Response response = client.newCall(request).execute()) {
                 if (!response.isSuccessful()) {
                     String errorBody = response.body() != null ? response.body().string() : "";
-                    log.error("❌ Hugging Face API call failed: {} {} - Body: {}", 
-                        response.code(), response.message(), errorBody);
+                    log.error("❌ Hugging Face API call failed: {} {} - URL: {} - Body: {}", 
+                        response.code(), response.message(), url, errorBody);
                     
                     // Check if model is loading
                     if (response.code() == 503 || errorBody.contains("loading")) {
@@ -290,13 +303,21 @@ public class HuggingFaceApiService {
     }
     
     /**
-     * API Parameters for enhanced control (paid plan features)
+     * API Parameters for enhanced control
+     * Compatible with both old Inference API and new Inference Providers API
      */
     public static class ApiParameters {
+        @JsonProperty("return_full_text")
         private boolean returnFullText = false;  // Don't return full text, just the generated part
-        private boolean useCache = true;         // Use caching for better performance
+        
+        @JsonProperty("use_cache")
+        private boolean useCache = true;          // Use caching for better performance
+        
+        @JsonProperty("wait_for_model")
         private boolean waitForModel = true;     // Wait for model to load if needed
-        private int maxNewTokens = 512;          // Limit response length for faster processing
+        
+        @JsonProperty("max_new_tokens")
+        private Integer maxNewTokens = 512;      // Limit response length for faster processing
         
         public boolean isReturnFullText() { return returnFullText; }
         public void setReturnFullText(boolean returnFullText) { this.returnFullText = returnFullText; }
@@ -307,8 +328,8 @@ public class HuggingFaceApiService {
         public boolean isWaitForModel() { return waitForModel; }
         public void setWaitForModel(boolean waitForModel) { this.waitForModel = waitForModel; }
         
-        public int getMaxNewTokens() { return maxNewTokens; }
-        public void setMaxNewTokens(int maxNewTokens) { this.maxNewTokens = maxNewTokens; }
+        public Integer getMaxNewTokens() { return maxNewTokens; }
+        public void setMaxNewTokens(Integer maxNewTokens) { this.maxNewTokens = maxNewTokens; }
     }
     
     /**

@@ -86,7 +86,7 @@ spring.jackson.date-format=yyyy-MM-dd'T'HH:mm:ss'Z'
 # ============================================
 # IMPORTANT: Set API key as environment variable
 huggingface.api.key=${HUGGINGFACE_API_KEY}
-huggingface.api.url=https://api-inference.huggingface.co/models
+huggingface.api.url=https://router.huggingface.co/hf-inference
 huggingface.validation.enabled=true
 
 # Production Models (High Quality)

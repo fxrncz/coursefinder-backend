@@ -56,6 +56,9 @@ public class EnhancedTestResultDTO {
     // AI Model Comparison Results
     private AiModelComparison aiModelComparison;
     
+    // Advanced Analytics (Human + AI Combined Metrics)
+    private AdvancedAnalyticsDTO advancedAnalytics;
+    
     // Static inner class for detailed MBTI information
     public static class DetailedMbtiInfoDTO {
         private String learningStyleSummary;
@@ -289,6 +292,9 @@ public class EnhancedTestResultDTO {
     
     public AiModelComparison getAiModelComparison() { return aiModelComparison; }
     public void setAiModelComparison(AiModelComparison aiModelComparison) { this.aiModelComparison = aiModelComparison; }
+    
+    public AdvancedAnalyticsDTO getAdvancedAnalytics() { return advancedAnalytics; }
+    public void setAdvancedAnalytics(AdvancedAnalyticsDTO advancedAnalytics) { this.advancedAnalytics = advancedAnalytics; }
     
     // AI Validation Status DTO
     public static class AiValidationStatusDTO {

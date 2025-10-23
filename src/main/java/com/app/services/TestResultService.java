@@ -2,6 +2,7 @@ package com.app.services;
 
 import com.app.dto.PersonalityTestSubmissionDTO;
 import com.app.dto.EnhancedTestResultDTO;
+import com.app.dto.AdvancedAnalyticsDTO;
 import com.app.models.TestResult;
 import com.app.models.MbtiRiasecMapping;
 import com.app.models.MbtiDetails;
@@ -75,6 +76,9 @@ public class TestResultService {
     
     @Autowired
     private AiModelComparisonService aiModelComparisonService;
+    
+    @Autowired
+    private AdvancedAnalyticsService advancedAnalyticsService;
     
     @org.springframework.beans.factory.annotation.Value("${huggingface.validation.enabled:false}")
     private boolean aiValidationEnabled;
@@ -1719,6 +1723,75 @@ public class TestResultService {
                 } catch (Exception e) {
                     logger.warn("⚠️ AI model comparison failed (non-critical): {}", e.getMessage());
                 }
+                
+                // 🔬 ADVANCED ANALYTICS (Human + AI Combined Metrics)
+                try {
+                    logger.info("🔬 Generating advanced analytics (Human + AI metrics)");
+                    
+                    // Get detailed scoring data for percentages
+                    com.app.dto.DetailedScoringDTO scoringData = 
+                        enhancedScoringService.getDetailedScoringData(entity.getSessionId());
+                    
+                    // Prepare MBTI percentages map
+                    Map<String, Double> mbtiPercentages = new HashMap<>();
+                    if (scoringData != null && scoringData.getMbtiScores() != null) {
+                        for (Map.Entry<String, com.app.dto.DetailedScoringDTO.ScoreData> entry : scoringData.getMbtiScores().entrySet()) {
+                            mbtiPercentages.put(entry.getKey(), entry.getValue().getPercentage());
+                        }
+                    }
+                    
+                    // Prepare RIASEC percentages map
+                    Map<String, Double> riasecPercentages = new HashMap<>();
+                    if (scoringData != null && scoringData.getRiasecScores() != null) {
+                        for (Map.Entry<String, com.app.dto.DetailedScoringDTO.ScoreData> entry : scoringData.getRiasecScores().entrySet()) {
+                            riasecPercentages.put(entry.getKey(), entry.getValue().getPercentage());
+                        }
+                    }
+                    
+                    // Prepare courses with AI scores
+                    List<AdvancedAnalyticsService.CourseWithAiScore> coursesWithAiScores = new ArrayList<>();
+                    if (aiCourseRankings != null && !aiCourseRankings.isEmpty()) {
+                        for (EnhancedTestResultDTO.AiCourseRanking ranking : aiCourseRankings) {
+                            coursesWithAiScores.add(new AdvancedAnalyticsService.CourseWithAiScore(
+                                ranking.getCourseName(),
+                                "", // Description will be extracted from coursePath if needed
+                                ranking.getMatchScore()
+                            ));
+                        }
+                    }
+                    
+                    // Prepare careers with AI scores
+                    List<AdvancedAnalyticsService.CareerWithAiScore> careersWithAiScores = new ArrayList<>();
+                    if (aiCareerRankings != null && !aiCareerRankings.isEmpty()) {
+                        for (EnhancedTestResultDTO.AiCareerRanking ranking : aiCareerRankings) {
+                            careersWithAiScores.add(new AdvancedAnalyticsService.CareerWithAiScore(
+                                ranking.getCareerName(),
+                                "", // Description will be extracted from careerSuggestions if needed
+                                ranking.getMatchScore()
+                            ));
+                        }
+                    }
+                    
+                    // Generate advanced analytics
+                    AdvancedAnalyticsService.AdvancedAnalyticsResult analyticsResult = 
+                        advancedAnalyticsService.generateAdvancedAnalytics(
+                            entity.getMbtiType(),
+                            entity.getRiasecCode(),
+                            mbtiPercentages,
+                            riasecPercentages,
+                            coursesWithAiScores,
+                            careersWithAiScores
+                        );
+                    
+                    // Convert to DTO
+                    AdvancedAnalyticsDTO analyticsDTO = convertToAnalyticsDTO(analyticsResult);
+                    dto.setAdvancedAnalytics(analyticsDTO);
+                    
+                    logger.info("✅ Advanced analytics generated successfully");
+                    
+                } catch (Exception e) {
+                    logger.warn("⚠️ Advanced analytics generation failed (non-critical): {}", e.getMessage(), e);
+                }
                     
             } catch (Exception e) {
                 logger.warn("⚠️ AI ranking failed (non-critical): {}", e.getMessage());
@@ -2213,5 +2286,95 @@ public class TestResultService {
      */
     public List<com.app.models.PersonalityTestScores> getAllPersonalityTestScores() {
         return enhancedScoringService.getAllPersonalityTestScores();
+    }
+    
+    /**
+     * Convert AdvancedAnalyticsResult to DTO
+     */
+    private AdvancedAnalyticsDTO convertToAnalyticsDTO(AdvancedAnalyticsService.AdvancedAnalyticsResult result) {
+        AdvancedAnalyticsDTO dto = new AdvancedAnalyticsDTO();
+        
+        dto.setMbtiType(result.getMbtiType());
+        dto.setRiasecCode(result.getRiasecCode());
+        dto.setGeneratedAt(result.getGeneratedAt());
+        dto.setOverallSynthesis(result.getOverallSynthesis());
+        
+        // Convert personality metrics
+        if (result.getPersonalityMetrics() != null) {
+            AdvancedAnalyticsDTO.PersonalityMetricsDTO metricsDTO = new AdvancedAnalyticsDTO.PersonalityMetricsDTO();
+            
+            // Convert MBTI traits
+            List<AdvancedAnalyticsDTO.TraitScoreDTO> mbtiTraits = new ArrayList<>();
+            for (AdvancedAnalyticsService.TraitScore trait : result.getPersonalityMetrics().getMbtiTraits()) {
+                AdvancedAnalyticsDTO.TraitScoreDTO traitDTO = new AdvancedAnalyticsDTO.TraitScoreDTO();
+                traitDTO.setTrait(trait.getTrait());
+                traitDTO.setPercentage(trait.getPercentage());
+                traitDTO.setLabel(trait.getLabel());
+                mbtiTraits.add(traitDTO);
+            }
+            metricsDTO.setMbtiTraits(mbtiTraits);
+            
+            // Convert RIASEC interests
+            List<AdvancedAnalyticsDTO.TraitScoreDTO> riasecInterests = new ArrayList<>();
+            for (AdvancedAnalyticsService.TraitScore interest : result.getPersonalityMetrics().getRiasecInterests()) {
+                AdvancedAnalyticsDTO.TraitScoreDTO interestDTO = new AdvancedAnalyticsDTO.TraitScoreDTO();
+                interestDTO.setTrait(interest.getTrait());
+                interestDTO.setPercentage(interest.getPercentage());
+                interestDTO.setLabel(interest.getLabel());
+                riasecInterests.add(interestDTO);
+            }
+            metricsDTO.setRiasecInterests(riasecInterests);
+            
+            metricsDTO.setAverageTraitStrength(result.getPersonalityMetrics().getAverageTraitStrength());
+            dto.setPersonalityMetrics(metricsDTO);
+        }
+        
+        // Convert course matches
+        if (result.getCourseMatches() != null) {
+            List<AdvancedAnalyticsDTO.CourseMatchAnalysisDTO> courseMatches = new ArrayList<>();
+            for (AdvancedAnalyticsService.CourseMatchAnalysis match : result.getCourseMatches()) {
+                AdvancedAnalyticsDTO.CourseMatchAnalysisDTO matchDTO = new AdvancedAnalyticsDTO.CourseMatchAnalysisDTO();
+                matchDTO.setCourseName(match.getCourseName());
+                matchDTO.setCourseDescription(match.getCourseDescription());
+                matchDTO.setHumanMetricScore(match.getHumanMetricScore());
+                matchDTO.setAiMetricScore(match.getAiMetricScore());
+                matchDTO.setCombinedMatchScore(match.getCombinedMatchScore());
+                matchDTO.setMatchExplanation(match.getMatchExplanation());
+                matchDTO.setConfidenceLevel(match.getConfidenceLevel());
+                courseMatches.add(matchDTO);
+            }
+            dto.setCourseMatches(courseMatches);
+        }
+        
+        // Convert career matches
+        if (result.getCareerMatches() != null) {
+            List<AdvancedAnalyticsDTO.CareerMatchAnalysisDTO> careerMatches = new ArrayList<>();
+            for (AdvancedAnalyticsService.CareerMatchAnalysis match : result.getCareerMatches()) {
+                AdvancedAnalyticsDTO.CareerMatchAnalysisDTO matchDTO = new AdvancedAnalyticsDTO.CareerMatchAnalysisDTO();
+                matchDTO.setCareerName(match.getCareerName());
+                matchDTO.setCareerDescription(match.getCareerDescription());
+                matchDTO.setHumanMetricScore(match.getHumanMetricScore());
+                matchDTO.setAiMetricScore(match.getAiMetricScore());
+                matchDTO.setCombinedMatchScore(match.getCombinedMatchScore());
+                matchDTO.setMatchExplanation(match.getMatchExplanation());
+                matchDTO.setConfidenceLevel(match.getConfidenceLevel());
+                careerMatches.add(matchDTO);
+            }
+            dto.setCareerMatches(careerMatches);
+        }
+        
+        // Convert overall statistics
+        if (result.getOverallStatistics() != null) {
+            AdvancedAnalyticsDTO.OverallStatisticsDTO statsDTO = new AdvancedAnalyticsDTO.OverallStatisticsDTO();
+            statsDTO.setAverageCourseMatch(result.getOverallStatistics().getAverageCourseMatch());
+            statsDTO.setTopCourseMatch(result.getOverallStatistics().getTopCourseMatch());
+            statsDTO.setAverageCareerMatch(result.getOverallStatistics().getAverageCareerMatch());
+            statsDTO.setTopCareerMatch(result.getOverallStatistics().getTopCareerMatch());
+            statsDTO.setOverallConfidence(result.getOverallStatistics().getOverallConfidence());
+            statsDTO.setRecommendationStrength(result.getOverallStatistics().getRecommendationStrength());
+            dto.setOverallStatistics(statsDTO);
+        }
+        
+        return dto;
     }
 }
